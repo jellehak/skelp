@@ -234,7 +234,7 @@ export class SkelpShell {
       this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}Skelp Assistent:{/bold}{/magenta-fg}\n${viewText}`);
       this.historyBox.scroll(100);
       this.screen.render();
-    }, this);
+    }, this, this.logger);
   }
 
   /**
