@@ -33,6 +33,22 @@ export class AIClient {
   }
 
   /**
+   * Returns estimated message size / count in current session history.
+   */
+  getMessageStats() {
+    const count = this.chatHistory.length;
+    const jsonStr = JSON.stringify(this.chatHistory);
+    const bytes = Buffer.byteLength(jsonStr, 'utf8');
+    let sizeStr = `${bytes} B`;
+    if (bytes >= 1024 * 1024) {
+      sizeStr = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    } else if (bytes >= 1024) {
+      sizeStr = `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return { count, bytes, sizeStr };
+  }
+
+  /**
    * Fetches the list of available models from the OpenAI-compatible server.
    */
   async getModels() {

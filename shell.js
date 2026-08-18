@@ -38,7 +38,7 @@ export class SkelpShell {
       height: 3,
       align: 'left',
       valign: 'middle',
-      content: ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Assistent Status: {green-fg}Ready{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`,
+      content: this.getStatusContent('Ready'),
       tags: true,
       border: {
         type: 'line'
@@ -186,8 +186,13 @@ export class SkelpShell {
     this.inputField.focus();
   }
 
+  getStatusContent(statusText) {
+    const stats = this.client.getMessageStats ? this.client.getMessageStats() : { count: 0, sizeStr: '0 B' };
+    return ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}  |  Messages: {magenta-fg}${stats.count} (${stats.sizeStr}){/magenta-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`;
+  }
+
   updateStatus(statusText) {
-    this.statusBar.setContent(` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Assistent Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`);
+    this.statusBar.setContent(this.getStatusContent(statusText));
     this.screen.render();
   }
 
