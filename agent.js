@@ -295,8 +295,10 @@ Use the provided tools/functions framework. Always state what you are doing befo
         output: process.stdout
       });
 
+      const maxLen = 200;
+      const displayCmd = command.length > maxLen ? `${command.slice(0, maxLen)}... [truncated]` : command;
       console.log(`\n\x1b[33m⚠ The assistant wants to run this command:\x1b[0m`);
-      console.log(`\x1b[36m  ${command}\x1b[0m\n`);
+      console.log(`\x1b[36m  ${displayCmd}\x1b[0m\n`);
 
       rl.question('Do you want to continue with the execution? (Y/n): ', (answer) => {
         if (!readlineInterface) {

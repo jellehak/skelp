@@ -262,7 +262,11 @@ export class SkelpShell {
         tags: true
       });
 
-      confirmBox.ask(`The assistent wants to run this local command:\n\n{cyan-fg}${command.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}{/cyan-fg}\n\nContinue?`, (err, value) => {
+      const maxLen = 200;
+      const truncatedCmd = command.length > maxLen ? `${command.slice(0, maxLen)}... [truncated]` : command;
+      const safeCmd = truncatedCmd.replace(/\{/g, '⦃').replace(/\}/g, '⦄');
+
+      confirmBox.ask(`The assistent wants to run this local command:\n\n{cyan-fg}${safeCmd}{/cyan-fg}\n\nContinue?`, (err, value) => {
         confirmBox.destroy();
         this.inputField.focus();
         this.screen.render();
