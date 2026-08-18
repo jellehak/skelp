@@ -1,54 +1,16 @@
-import childProcess from 'node:child_process';
-import dns from 'node:dns';
-import os from 'node:os';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { saveConfig } from './lib/config.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-export class AIClient {
-  constructor(config) {
-    this.server = config.server;
-    this.primaryModel = config.primaryModel;
-    this.autoApprove = config.autoApprove || false;
-    this.tone = config.tone || 'concise, friendly and helpful';
-    this.chatHistory = [];
+/**
+ * Low-level OpenAI-compatible API client.
+ * Handles HTTP requests, streaming completions, and fetching models.
+ */
+export class OpenAIClient {
+  constructor(config = {}) {
+    this.server = config.server || 'http://localhost:1234';
+    this.primaryModel = config.primaryModel || 'local-ai-model';
   }
 
-  updateConfig(config) {
-    this.server = config.server || this.server;
-    this.primaryModel = config.primaryModel || this.primaryModel;
-    if (config.autoApprove !== undefined) {
-      this.autoApprove = config.autoApprove;
-    }
-    if (config.tone !== undefined) {
-      this.tone = config.tone;
-    }
-  }
-
-  /**
-   * Resets current chat history context.
-   */
-  clearHistory() {
-    this.chatHistory = [];
-  }
-
-  /**
-   * Returns estimated message size / count in current session history.
-   */
-  getMessageStats() {
-    const count = this.chatHistory.length;
-    const jsonStr = JSON.stringify(this.chatHistory);
-    const bytes = Buffer.byteLength(jsonStr, 'utf8');
-    let sizeStr = `${bytes} B`;
-    if (bytes >= 1024 * 1024) {
-      sizeStr = `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    } else if (bytes >= 1024) {
-      sizeStr = `${(bytes / 1024).toFixed(1)} KB`;
-    }
-    return { count, bytes, sizeStr };
+  updateConfig(config = {}) {
+    if (config.server !== undefined) this.server = config.server;
+    if (config.primaryModel !== undefined) this.primaryModel = config.primaryModel;
   }
 
   /**
@@ -63,7 +25,7 @@ export class AIClient {
       }
       const data = await res.json();
       if (data && Array.isArray(data.data)) {
-        return data.data.map(m => m.id);
+        return data.data.map((m) => m.id);
       }
       return [];
     } catch (err) {
@@ -72,361 +34,93 @@ export class AIClient {
   }
 
   /**
-   * Runs shell commands under agent supervision or as direct request.
-   * Utilizes OpenAI native tool calling formats if configured/supported, otherwise falls back to parsing JSON blocks.
+   * Streams chat completions from OpenAI-compatible endpoint.
+   * Calls onChunk with the raw delta object (containing content, reasoning_content, tool_calls, etc.).
+   * Returns { content: string, toolCalls: Array }.
    */
-  async executeGoal(prompt, onStream, readlineInterface = null, logger = null) {
-    if (logger) {
-      logger.logMessage('user', prompt);
+  async chatCompletionStream({ messages, tools, toolChoice = 'auto', onChunk }) {
+    const url = `${this.server.replace(/\/+$/, '')}/v1/chat/completions`;
+    const payload = {
+      model: this.primaryModel,
+      messages,
+      stream: true
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools;
+      payload.tool_choice = toolChoice;
     }
 
-    let skillsPrompt = '';
-    try {
-      const skillsDir = path.join(__dirname, 'skills');
-      if (fs.existsSync(skillsDir)) {
-        const skillFolders = fs.readdirSync(skillsDir);
-        for (const folder of skillFolders) {
-          const skillFile = path.join(skillsDir, folder, 'SKILL.md');
-          if (fs.existsSync(skillFile)) {
-            skillsPrompt += '\n\n' + fs.readFileSync(skillFile, 'utf8');
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore if skills loading fails
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '');
+      throw new Error(`HTTP ${response.status}: ${bodyText || response.statusText}`);
     }
 
-    const systemPrompt = `You are Skelp, a minimal agentic terminal developer assistant.
-You can execute shell commands, read files, and write files to complete tasks on the current machine.
-Here is some dynamic workspace metadata:
-- Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
-- Current Date and Time: ${new Date().toString()}
-- Current Developer Directory: ${process.cwd()}
-- Current Config: server="${this.server}", primaryModel="${this.primaryModel}", tone="${this.tone}", autoApprove=${this.autoApprove}
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullReply = '';
+    const toolCalls = [];
 
-Please present your behavior, response style, and tone exactly matching: "${this.tone}".
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
 
-If the user's intent is simply to converse, reply with helpful natural language.
-If you need to query information or perform action steps:
-Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillsPrompt}`;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
 
-    if (this.chatHistory.length === 0) {
-      this.chatHistory.push({
-        role: 'system',
-        content: systemPrompt
-      });
-    }
-
-    this.chatHistory.push({ role: 'user', content: prompt });
-
-    // Define native tools structures and their execution handlers (cb)
-    const tools = [
-      {
-        type: 'function',
-        function: {
-          name: 'execute_command',
-          description: 'Runs a shell command on the local machine and returns CLI output. Must NOT be an interactive command.',
-          parameters: {
-            type: 'object',
-            properties: {
-              command: { type: 'string', description: 'The exact shell command to run.' }
-            },
-            required: ['command']
-          }
-        },
-        handler: async (args) => {
-          let shouldExecute = true;
-          if (!this.autoApprove) {
-            shouldExecute = await this.askForConfirmation(args.command, readlineInterface);
-          }
-          if (shouldExecute) {
-            if (onStream) {
-              onStream(`\n\x1b[33m⚡ Executing command: ${args.command}...\x1b[0m\n`);
-            }
-            return await this.runCommand(args.command);
-          } else {
-            if (onStream) {
-              onStream(`\n\x1b[31mx Execution skipped.\x1b[0m\n`);
-            }
-            return 'Action execution was denied/cancelled by the user.';
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'write_file',
-          description: 'Writes/Saves content text to a specified file path.',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: { type: 'string', description: 'Destination file path.' },
-              content: { type: 'string', description: 'The text content to write.' }
-            },
-            required: ['path', 'content']
-          }
-        },
-        handler: async (args) => {
-          if (onStream) {
-            onStream(`\n\x1b[33m⚡ Writing file: ${args.path}...\x1b[0m\n`);
-          }
-          await fsPromises.writeFile(args.path, args.content || '', 'utf8');
-          return `Successfully wrote to file ${args.path}`;
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'read_file',
-          description: 'Reads contents of a file on the local file system.',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: { type: 'string', description: 'Source file path to read.' }
-            },
-            required: ['path']
-          }
-        },
-        handler: async (args) => {
-          if (onStream) {
-            onStream(`\n\x1b[33m⚡ Reading file: ${args.path}...\x1b[0m\n`);
-          }
-          return await fsPromises.readFile(args.path, 'utf8');
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'update_config',
-          description: 'Updates configuration settings for Skelp (server URL, primaryModel, tone, or autoApprove).',
-          parameters: {
-            type: 'object',
-            properties: {
-              key: {
-                type: 'string',
-                description: 'The configuration key to update: "server", "primaryModel", "tone", or "autoApprove".',
-                enum: ['server', 'primaryModel', 'tone', 'autoApprove']
-              },
-              value: {
-                type: 'string',
-                description: 'The new value for the configuration key. (For autoApprove, use "true" or "false").'
-              }
-            },
-            required: ['key', 'value']
-          }
-        },
-        handler: async (args) => {
-          let val = args.value;
-          if (args.key === 'autoApprove') {
-            val = String(args.value).toLowerCase() === 'true';
-          }
-          const updatePayload = { [args.key]: val };
-          this.updateConfig(updatePayload);
-          saveConfig(updatePayload);
-          if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
-            readlineInterface.updateStatus('Ready');
-          }
-          if (onStream) {
-            onStream(`\n\x1b[32m✔ Configuration updated: ${args.key} = ${val}\x1b[0m\n`);
-          }
-          return `Successfully updated configuration "${args.key}" to "${val}".`;
-        }
-      }
-    ];
-
-    const toolSchemas = tools.map(({ handler, ...schema }) => schema);
-    const toolHandlers = new Map(tools.map(t => [t.function.name, t.handler]));
-
-    let loop = true;
-    let maxSteps = 5;
-
-    while (loop && maxSteps > 0) {
-      maxSteps--;
-      let fullReply = '';
-      let toolCalls = [];
-      
-      try {
-        const url = `${this.server.replace(/\/+$/, '')}/v1/chat/completions`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: this.primaryModel,
-            messages: this.chatHistory,
-            tools: toolSchemas,
-            tool_choice: 'auto',
-            stream: true
-          })
-        });
-
-        if (!response.ok) {
-          const bodyText = await response.text().catch(() => '');
-          throw new Error(`HTTP ${response.status}: ${bodyText || response.statusText}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-
-          for (const line of lines) {
-            const cleanLine = line.trim();
-            if (!cleanLine || cleanLine === 'data: [DONE]') continue;
-            if (cleanLine.startsWith('data: ')) {
-              try {
-                const jsonDoc = JSON.parse(cleanLine.slice(6));
-                const delta = jsonDoc.choices?.[0]?.delta;
-                
-                if (delta) {
-                  const chunk = delta.content || '';
-                  if (chunk) {
-                    fullReply += chunk;
-                    if (onStream) {
-                      onStream(chunk);
-                    }
-                  }
-
-                  // Handle native tool calls stream
-                  if (delta.tool_calls) {
-                    for (const tc of delta.tool_calls) {
-                      const idx = tc.index ?? 0;
-                      if (!toolCalls[idx]) {
-                        toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                      }
-                      if (tc.id) toolCalls[idx].id = tc.id;
-                      if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
-                      if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
-                    }
-                  }
-                }
-              } catch (e) {
-                // Ignore incomplete JSON chunks
-              }
-            }
-          }
-        }
-      } catch (err) {
-        throw new Error(`Request failed: ${err.message}`);
-      }
-
-      // Filter out undefined index slots in streamed tool calls
-      toolCalls = toolCalls.filter(Boolean);
-
-      // Append assistant response to cache
-      const assistantMsg = { role: 'assistant' };
-      if (fullReply) assistantMsg.content = fullReply;
-      if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
-      this.chatHistory.push(assistantMsg);
-
-      if (logger) {
-        logger.logMessage('assistant', fullReply || `[Tool Call: ${JSON.stringify(toolCalls)}]`);
-      }
-
-      // Process Native Tool Calls via registered callbacks
-      if (toolCalls.length > 0) {
-        for (const tc of toolCalls) {
-          let toolResult = '';
-          const actionName = tc.function.name;
+      for (const line of lines) {
+        const cleanLine = line.trim();
+        if (!cleanLine || cleanLine === 'data: [DONE]') continue;
+        if (cleanLine.startsWith('data: ')) {
           try {
-            const argsObj = JSON.parse(tc.function.arguments || '{}');
-            const handler = toolHandlers.get(actionName);
-            if (handler) {
-              toolResult = await handler(argsObj);
-            } else {
-              toolResult = `Unknown tool: ${actionName}`;
+            const jsonDoc = JSON.parse(cleanLine.slice(6));
+            const delta = jsonDoc.choices?.[0]?.delta;
+
+            if (delta) {
+              const chunk = delta.content || '';
+              if (chunk) {
+                fullReply += chunk;
+              }
+
+              if (onChunk) {
+                onChunk(delta);
+              }
+
+              if (delta.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  if (!toolCalls[idx]) {
+                    toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                  }
+                  if (tc.id) toolCalls[idx].id = tc.id;
+                  if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                  if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+                }
+              }
             }
-          } catch (err) {
-            toolResult = `Tool execution error: ${err.message}`;
+          } catch (e) {
+            // Ignore incomplete JSON chunks
           }
-
-          if (logger) {
-            logger.logMessage('system-tool-result', toolResult);
-          }
-
-          if (onStream) {
-            onStream(`\n\x1b[32m✔ Result:\n${toolResult.slice(0, 500)}${toolResult.length > 500 ? '... [truncated]' : ''}\x1b[0m\n`);
-          }
-
-          this.chatHistory.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: toolResult
-          });
         }
-      } 
-      // No standard tool calls were requested; response completed naturally
-      else {
-        loop = false;
       }
     }
-  }
 
-  /**
-   * Helper to prompt user for yes/no confirmation when a task commands shell execution.
-   */
-  askForConfirmation(command, readlineInterface) {
-    return new Promise((resolve) => {
-      // If readlineInterface is the Blessed shell instance, use its pop-up modal askForConfirmation instead of readline.question
-      if (readlineInterface && typeof readlineInterface.askForConfirmation === 'function') {
-        readlineInterface.askForConfirmation(command).then((confirmed) => {
-          resolve(confirmed);
-        });
-        return;
-      }
-
-      const rl = readlineInterface || readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-      });
-
-      console.log(`\n\x1b[33m⚠ The assistant wants to run this command:\x1b[0m`);
-      console.log(`\x1b[36m  ${command}\x1b[0m\n`);
-
-      rl.question('Do you want to continue with the execution? (Y/n): ', (answer) => {
-        // If we created a temporary readline interface, close it. Otherwise leave the shell's intact
-        if (!readlineInterface) {
-          rl.close();
-        }
-        const confirm = answer.trim().toLowerCase();
-        // Since Y (Yes) is the default, empty response or yes/y approves execution.
-        if (confirm === '' || confirm === 'y' || confirm === 'yes') {
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      });
-    });
-  }
-
-  runCommand(cmd) {
-    return new Promise((resolve) => {
-      // Disallow commands that typically open interactive shells or prompt recursively (like ssh) 
-      // when run passively inside non-interactive child exec wrappers. We inform the model.
-      const interactiveBlockWords = ['ssh', 'sudo', 'su', 'passwd', 'nano', 'vi ', 'vim '];
-      const cmdTrimmed = cmd.trim().toLowerCase();
-      const firstWord = cmdTrimmed.split(/\s+/)[0];
-
-      if (interactiveBlockWords.includes(firstWord) || interactiveBlockWords.some(word => cmdTrimmed.startsWith(word))) {
-        resolve(`Block: Command '${firstWord}' is interactive and cannot be run safely by a background child process without a TTY socket. Encourage the user to open a terminal directly if they need to log in or configure accounts.`);
-        return;
-      }
-
-      childProcess.exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
-        let result = '';
-        if (stdout) result += stdout;
-        if (stderr) result += `\nStderr:\n${stderr}`;
-        if (error) result += `\nError: ${error.message}`;
-        resolve(result.trim() || '[No output]');
-      });
-    });
+    return {
+      content: fullReply,
+      toolCalls: toolCalls.filter(Boolean)
+    };
   }
 }
 
-import { promises as fsPromises } from 'node:fs';
+// Re-export AIAgent as AIClient for backwards compatibility
+export { AIAgent as AIClient } from './agent.js';
+export { AIAgent } from './agent.js';
+

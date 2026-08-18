@@ -4,6 +4,8 @@ import { formatMarkdown } from './lib/formatter.js';
 import { ChatLogger } from './lib/logger.js';
 import { executeCommand } from './lib/commands.js';
 
+const ASSISTENT_NAME = 'Skelp';
+
 export class SkelpShell {
   constructor(client) {
     this.client = client;
@@ -188,7 +190,8 @@ export class SkelpShell {
 
   getStatusContent(statusText) {
     const stats = this.client.getMessageStats ? this.client.getMessageStats() : { count: 0, sizeStr: '0 B' };
-    return ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}  |  Messages: {magenta-fg}${stats.count} (${stats.sizeStr}){/magenta-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`;
+    const cwdDisplay = this.client.cwd ? (this.client.cwd.replace(process.env.HOME || '', '~')) : process.cwd();
+    return ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  CWD: {blue-fg}${cwdDisplay}{/blue-fg}  |  Messages: {magenta-fg}${stats.count} (${stats.sizeStr}){/magenta-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`;
   }
 
   updateStatus(statusText) {
@@ -213,13 +216,92 @@ export class SkelpShell {
   }
 
   async handleInput(input) {
-    let responseContainerLog = '';
+    // Array of blocks: { type: 'reasoning' | 'text' | 'function', name?: string, arguments?: string, content?: string, bytes?: number }
+    const blocks = [];
     
     await this.client.executeGoal(input, (chunk) => {
-      responseContainerLog += chunk;
-      
+      if (typeof chunk === 'string') {
+        let lastBlock = blocks[blocks.length - 1];
+        if (!lastBlock || lastBlock.type !== 'text') {
+          lastBlock = { type: 'text', content: '' };
+          blocks.push(lastBlock);
+        }
+        lastBlock.content += chunk;
+      } else if (chunk && typeof chunk === 'object') {
+        const contentDelta = chunk.content || '';
+        const reasoningDelta = chunk.reasoning_content || chunk.reasoning || '';
+
+        if (reasoningDelta) {
+          let lastBlock = blocks[blocks.length - 1];
+          if (!lastBlock || lastBlock.type !== 'reasoning') {
+            lastBlock = { type: 'reasoning', content: '' };
+            blocks.push(lastBlock);
+          }
+          lastBlock.content += reasoningDelta;
+        }
+
+        if (contentDelta) {
+          let lastBlock = blocks[blocks.length - 1];
+          if (!lastBlock || lastBlock.type !== 'text') {
+            lastBlock = { type: 'text', content: '' };
+            blocks.push(lastBlock);
+          }
+          lastBlock.content += contentDelta;
+        }
+
+        if (chunk.tool_calls && Array.isArray(chunk.tool_calls)) {
+          for (const tc of chunk.tool_calls) {
+            const idx = tc.index ?? 0;
+            // Find or create function block for this tool call index/id
+            let fnBlock = blocks.find((b) => b.type === 'function' && (b.id === tc.id || (b.index === idx && tc.id === undefined)));
+            if (!fnBlock) {
+              fnBlock = {
+                type: 'function',
+                index: idx,
+                id: tc.id || '',
+                name: tc.function?.name || '',
+                arguments: ''
+              };
+              blocks.push(fnBlock);
+            }
+            if (tc.id) fnBlock.id = tc.id;
+            if (tc.function?.name) fnBlock.name = tc.function.name;
+            if (tc.function?.arguments) fnBlock.arguments += tc.function.arguments;
+          }
+        }
+      }
+
+      // Render the structured blocks array into the terminal view
+      let formattedOutput = '';
+
+      for (const block of blocks) {
+        if (block.type === 'reasoning') {
+          formattedOutput += `\x1b[dim][Thinking: ${block.content}]\x1b[0m\n\n`;
+        } else if (block.type === 'text') {
+          formattedOutput += block.content;
+        } else if (block.type === 'function') {
+          const rawArgs = block.arguments || '';
+          const bytes = Buffer.byteLength(rawArgs, 'utf8');
+          let sizeStr = `${bytes} B`;
+          if (bytes >= 1024) {
+            sizeStr = `${(bytes / 1024).toFixed(1)} KB`;
+          }
+
+          let detail = '';
+          const pathMatch = rawArgs.match(/"path"\s*:\s*"([^"]+)"/);
+          const cmdMatch = rawArgs.match(/"command"\s*:\s*"([^"]*)/);
+          if (pathMatch) {
+            detail = ` ${pathMatch[1]}`;
+          } else if (cmdMatch) {
+            detail = ` ${cmdMatch[1].slice(0, 50)}`;
+          }
+
+          formattedOutput += `\n\x1b[33m⚡ Tool Call: ${block.name || 'tool'}${detail} (${sizeStr})...\x1b[0m\n`;
+        }
+      }
+
       // Escape curly brackets to avoid blessed parser misinterpreting layout templates
-      let viewText = responseContainerLog
+      let viewText = formattedOutput
         .replace(/\{/g, '⦃')
         .replace(/\}/g, '⦄')
         .replace(/\n⚡ Executing command:\s*(.*?)\.\.\./g, '\n{yellow-fg}{bold}⚡ Executing: $1...{/bold}{/yellow-fg}')
@@ -230,11 +312,11 @@ export class SkelpShell {
         .replace(/\*\*(.*?)\*\*/g, '{bold}$1{/bold}')
         .replace(/`(.*?)`/g, '{cyan-fg}$1{/cyan-fg}');
 
-      // Remove last line log and redraw
-      this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}Skelp Assistent:{/bold}{/magenta-fg}\n${viewText}`);
+      // Update chat box
+      this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}${ASSISTENT_NAME}:{/bold}{/magenta-fg}\n${viewText}`);
       this.historyBox.scroll(100);
       this.screen.render();
-    }, this);
+    }, this, this.logger);
   }
 
   /**
@@ -261,7 +343,11 @@ export class SkelpShell {
         tags: true
       });
 
-      confirmBox.ask(`The assistent wants to run this local command:\n\n{cyan-fg}${command.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}{/cyan-fg}\n\nContinue?`, (err, value) => {
+      const maxLen = 200;
+      const truncatedCmd = command.length > maxLen ? `${command.slice(0, maxLen)}... [truncated]` : command;
+      const safeCmd = truncatedCmd.replace(/\{/g, '⦃').replace(/\}/g, '⦄');
+
+      confirmBox.ask(`The assistent wants to run this local command:\n\n{cyan-fg}${safeCmd}{/cyan-fg}\n\nContinue?`, (err, value) => {
         confirmBox.destroy();
         this.inputField.focus();
         this.screen.render();
