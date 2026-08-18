@@ -1,12 +1,14 @@
 import readline from 'node:readline';
 import { saveConfig } from './lib/config.js';
 import { formatMarkdown } from './lib/formatter.js';
+import { ChatLogger } from './lib/logger.js';
 
 export class SkelpShell {
   constructor(client) {
     this.client = client;
     this.rl = null;
     this.isProcessing = false;
+    this.logger = new ChatLogger();
   }
 
   /**
@@ -18,6 +20,25 @@ export class SkelpShell {
       output: process.stdout,
       prompt: '\nskelp> '
     });
+
+    // Capture keypress streams to monitor Ctrl+N
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      readline.emitKeypressEvents(process.stdin);
+      
+      process.stdin.on('keypress', (str, key) => {
+        // Intercept Ctrl+N (key.ctrl is true, key.name is 'n')
+        if (key && key.ctrl && key.name === 'n') {
+          this.freshSession();
+          return;
+        }
+        
+        // Ensure Ctrl+C still exits normally
+        if (key && key.ctrl && key.name === 'c') {
+          this.rl.close();
+        }
+      });
+    }
 
     this.rl.on('SIGINT', () => {
       if (this.isProcessing) {
@@ -71,12 +92,25 @@ export class SkelpShell {
   }
 
   /**
+   * Clears the current conversation thread, instantiates a new logger and starts fresh.
+   */
+  freshSession() {
+    console.log('\n\x1b[33m🧹 Starting a fresh chat session with the assistant...\x1b[0m');
+    this.client.clearHistory();
+    this.logger = new ChatLogger();
+    console.clear();
+    this.renderHeader();
+    this.rl.prompt();
+  }
+
+  /**
    * Header indicating connection, readiness, the current model/server configuration.
    */
   renderHeader() {
     console.log('\x1b[1m\x1b[36m=======================================================');
     console.log(` SKELP SHELL — Model: ${this.client.primaryModel}`);
     console.log(` Server: ${this.client.server}`);
+    console.log(' Shortcut: [Ctrl+N] - Start fresh chat session');
     console.log('=======================================================\x1b[0m');
     console.log('Type your tasks or questions in natural language. Type "exit" to leave.');
   }
@@ -135,11 +169,11 @@ export class SkelpShell {
       // If the chunk is an execution header/result status, print it directly.
       // Otherwise, format inline Markdown elements as they stream!
       let formattedChunk = chunk
-        .replace(/\*\*(.*?)\*\*/g, '\x1b[1m$1\x1b[22m')
+        .replace(/\*\*(.*?)\*\//g, '\x1b[1m$1\x1b[22m')
         .replace(/`(.*?)`/g, '\x1b[36m$1\x1b[39m');
         
       process.stdout.write(formattedChunk);
-    }, this.rl);
+    }, this.rl, this.logger);
 
     console.log();
   }

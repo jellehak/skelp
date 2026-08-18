@@ -9,6 +9,7 @@ export class AIClient {
     this.server = config.server;
     this.primaryModel = config.primaryModel;
     this.autoApprove = config.autoApprove || false;
+    this.chatHistory = [];
   }
 
   updateConfig(config) {
@@ -17,6 +18,13 @@ export class AIClient {
     if (config.autoApprove !== undefined) {
       this.autoApprove = config.autoApprove;
     }
+  }
+
+  /**
+   * Resets current chat history context.
+   */
+  clearHistory() {
+    this.chatHistory = [];
   }
 
   /**
@@ -43,14 +51,18 @@ export class AIClient {
    * Runs shell commands under agent supervision or as direct request.
    * Utilizes tool calling if the assistant supports it, or a lightweight prompt loop to achieve goals.
    */
-  async executeGoal(prompt, onStream, readlineInterface = null) {
+  async executeGoal(prompt, onStream, readlineInterface = null, logger = null) {
+    if (logger) {
+      logger.logMessage('user', prompt);
+    }
     // We define clean tools for the model to use if it wants:
     // 1. execute_command: runs a shell command and returns output.
     // 2. read_file: reads file contents.
     // 3. write_file: writes code/text to a file.
     
-    let messages = [
-      {
+    // Initialize our conversation context array if not present or load past turns
+    if (this.chatHistory.length === 0) {
+      this.chatHistory.push({
         role: 'system',
         content: `You are Skelp, a minimal agentic terminal developer assistant.
 You can execute shell commands, read files, and write files to complete tasks on macOS/Linux.
@@ -84,9 +96,10 @@ Rules:
 1. Always state what you are doing before executing an action.
 2. Only run one action at a time. Wait for the user (shell) to provide the tool execution output in the next message.
 3. Be concise and practical. Keep files and outputs structured.`
-      },
-      { role: 'user', content: prompt }
-    ];
+      });
+    }
+
+    this.chatHistory.push({ role: 'user', content: prompt });
 
     let loop = true;
     let maxSteps = 5;
@@ -102,7 +115,7 @@ Rules:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: this.primaryModel,
-            messages: messages,
+            messages: this.chatHistory,
             stream: true
           })
         });
@@ -147,8 +160,12 @@ Rules:
         throw new Error(`Request failed: ${err.message}`);
       }
 
+      if (logger) {
+        logger.logMessage('assistant', fullReply);
+      }
+
       // Append assistant response
-      messages.push({ role: 'assistant', content: fullReply });
+      this.chatHistory.push({ role: 'assistant', content: fullReply });
 
       // Check if there is an action to perform
       const actionMatch = fullReply.match(/```json-action\s*([\s\S]*?)\s*```/);
@@ -190,11 +207,15 @@ Rules:
           actionResult = `Action execution error: ${err.message}`;
         }
 
+        if (logger) {
+          logger.logMessage('system-tool-result', actionResult);
+        }
+
         if (onStream) {
           onStream(`\n\x1b[32m✔ Result:\n${actionResult.slice(0, 500)}${actionResult.length > 500 ? '... [truncated]' : ''}\x1b[0m\n`);
         }
 
-        messages.push({
+        this.chatHistory.push({
           role: 'user',
           content: `Action execution outcome:\n${actionResult}`
         });
@@ -236,6 +257,17 @@ Rules:
 
   runCommand(cmd) {
     return new Promise((resolve) => {
+      // Disallow commands that typically open interactive shells or prompt recursively (like ssh) 
+      // when run passively inside non-interactive child exec wrappers. We inform the model.
+      const interactiveBlockWords = ['ssh', 'sudo', 'su', 'passwd', 'nano', 'vi ', 'vim '];
+      const cmdTrimmed = cmd.trim().toLowerCase();
+      const firstWord = cmdTrimmed.split(/\s+/)[0];
+
+      if (interactiveBlockWords.includes(firstWord) || interactiveBlockWords.some(word => cmdTrimmed.startsWith(word))) {
+        resolve(`Block: Command '${firstWord}' is interactive and cannot be run safely by a background child process without a TTY socket. Encourage the user to open a terminal directly if they need to log in or configure accounts.`);
+        return;
+      }
+
       childProcess.exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
         let result = '';
         if (stdout) result += stdout;
