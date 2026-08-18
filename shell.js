@@ -4,6 +4,8 @@ import { formatMarkdown } from './lib/formatter.js';
 import { ChatLogger } from './lib/logger.js';
 import { executeCommand } from './lib/commands.js';
 
+const ASSISTENT_NAME = 'Skelp';
+
 export class SkelpShell {
   constructor(client) {
     this.client = client;
@@ -232,7 +234,7 @@ export class SkelpShell {
         .replace(/`(.*?)`/g, '{cyan-fg}$1{/cyan-fg}');
 
       // Remove last line log and redraw
-      this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}Skelp Assistent:{/bold}{/magenta-fg}\n${viewText}`);
+      this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}${ASSISTENT_NAME}:{/bold}{/magenta-fg}\n${viewText}`);
       this.historyBox.scroll(100);
       this.screen.render();
     }, this, this.logger);
