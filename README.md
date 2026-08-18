@@ -52,12 +52,24 @@ skelp "Change the server to http://localhost:5678"
 skelp "Which models are available?"
 ```
 
+### CLI Configuration Commands
+Manage settings directly from your terminal:
+```sh
+skelp config list
+skelp config get tone
+skelp config set server http://localhost:5678
+skelp config set tone "formal and professional"
+skelp config set autoApprove true
+```
+
 ## Configuration
 
 Settings are preserved globally in `~/.skelprc`:
 ```json
 {
   "server": "http://localhost:1234",
-  "primaryModel": "local-ai-model"
+  "primaryModel": "local-ai-model",
+  "tone": "concise, friendly and helpful",
+  "autoApprove": false
 }
 ```

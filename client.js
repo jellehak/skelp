@@ -1,10 +1,13 @@
 import childProcess from 'node:child_process';
 import dns from 'node:dns';
 import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { saveConfig } from './lib/config.js';
 
-/**
- * Handles communication with the OpenAI-compatible AI model and provides agent/tool executions.
- */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 export class AIClient {
   constructor(config) {
     this.server = config.server;
@@ -77,18 +80,29 @@ export class AIClient {
       logger.logMessage('user', prompt);
     }
 
+    let skillConfigPrompt = '';
+    try {
+      const skillPath = path.join(__dirname, 'skills', 'config', 'SKILL.md');
+      if (fs.existsSync(skillPath)) {
+        skillConfigPrompt = '\n\n' + fs.readFileSync(skillPath, 'utf8');
+      }
+    } catch (e) {
+      // Ignore if skills file is missing
+    }
+
     const systemPrompt = `You are Skelp, a minimal agentic terminal developer assistant.
 You can execute shell commands, read files, and write files to complete tasks on the current machine.
 Here is some dynamic workspace metadata:
 - Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
 - Current Date and Time: ${new Date().toString()}
 - Current Developer Directory: ${process.cwd()}
+- Current Config: server="${this.server}", primaryModel="${this.primaryModel}", tone="${this.tone}", autoApprove=${this.autoApprove}
 
 Please present your behavior, response style, and tone exactly matching: "${this.tone}".
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
-Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.`;
+Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillConfigPrompt}`;
 
     if (this.chatHistory.length === 0) {
       this.chatHistory.push({
