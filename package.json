@@ -1,0 +1,17 @@
+{
+  "name": "skelp",
+  "version": "1.0.0",
+  "description": "A minimal shell powered by local running AI model.",
+  "main": "cli.js",
+  "type": "module",
+  "bin": {
+    "skelp": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
