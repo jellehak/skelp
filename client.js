@@ -1,5 +1,6 @@
 import childProcess from 'node:child_process';
 import dns from 'node:dns';
+import os from 'node:os';
 
 /**
  * Handles communication with the OpenAI-compatible AI model and provides agent/tool executions.
@@ -57,7 +58,12 @@ export class AIClient {
     }
 
     const systemPrompt = `You are Skelp, a minimal agentic terminal developer assistant.
-You can execute shell commands, read files, and write files to complete tasks on macOS/Linux.
+You can execute shell commands, read files, and write files to complete tasks on the current machine.
+Here is some dynamic workspace metadata:
+- Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
+- Current Date and Time: ${new Date().toString()}
+- Current Developer Directory: ${process.cwd()}
+
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
 Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.`;
