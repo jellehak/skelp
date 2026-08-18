@@ -291,6 +291,14 @@ Use the provided tools/functions framework. Always state what you are doing befo
    */
   askForConfirmation(command, readlineInterface) {
     return new Promise((resolve) => {
+      // If readlineInterface is the Blessed shell instance, use its pop-up modal askForConfirmation instead of readline.question
+      if (readlineInterface && typeof readlineInterface.askForConfirmation === 'function') {
+        readlineInterface.askForConfirmation(command).then((confirmed) => {
+          resolve(confirmed);
+        });
+        return;
+      }
+
       const rl = readlineInterface || readline.createInterface({
         input: process.stdin,
         output: process.stdout

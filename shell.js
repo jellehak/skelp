@@ -113,6 +113,17 @@ export class SkelpShell {
       keys: true
     });
 
+    // Intercept keys directly on the input field when it has focus (so Ctrl+N and Ctrl+C can bubble up)
+    this.inputField.on('element keypress', (el, ch, key) => {
+      if (key && key.ctrl && key.name === 'n') {
+        this.freshSession();
+        return false; // Prevent character entry
+      }
+      if (key && key.ctrl && key.name === 'c') {
+        process.exit(0);
+      }
+    });
+
     this.screen.key(['pageup', 'pagedown'], (ch, key) => {
       if (key.name === 'pageup') this.historyBox.scroll(-5);
       if (key.name === 'pagedown') this.historyBox.scroll(5);
@@ -144,7 +155,7 @@ export class SkelpShell {
       }
 
       if (lowerInput === 'clear') {
-        this.historyBox.clear();
+        this.historyBox.setContent('');
         this.inputField.focus();
         this.screen.render();
         return;
@@ -183,7 +194,7 @@ export class SkelpShell {
   freshSession() {
     this.client.clearHistory();
     this.logger = new ChatLogger();
-    this.historyBox.clear();
+    this.historyBox.setContent('');
     this.historyBox.log(`{bold}{yellow-fg}🧹 Started a fresh chat session with the assistant.{/yellow-fg}{/bold}`);
     this.updateStatus('Ready');
     this.inputField.focus();
