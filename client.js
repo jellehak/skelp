@@ -14,6 +14,7 @@ export class AIClient {
     this.primaryModel = config.primaryModel;
     this.autoApprove = config.autoApprove || false;
     this.tone = config.tone || 'concise, friendly and helpful';
+    this.cwd = config.cwd || process.cwd();
     this.chatHistory = [];
   }
 
@@ -26,6 +27,23 @@ export class AIClient {
     if (config.tone !== undefined) {
       this.tone = config.tone;
     }
+    if (config.cwd !== undefined) {
+      this.cwd = config.cwd;
+    }
+  }
+
+  setCwd(newPath) {
+    const resolved = path.resolve(this.cwd, newPath);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      throw new Error(`Directory does not exist: ${resolved}`);
+    }
+    this.cwd = resolved;
+    try {
+      process.chdir(resolved);
+    } catch (e) {
+      // Ignored
+    }
+    return this.cwd;
   }
 
   /**
@@ -95,7 +113,7 @@ You can execute shell commands, read files, and write files to complete tasks on
 Here is some dynamic workspace metadata:
 - Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
 - Current Date and Time: ${new Date().toString()}
-- Current Developer Directory: ${process.cwd()}
+- Current Working Directory (CWD): ${this.cwd}
 - Current Config: server="${this.server}", primaryModel="${this.primaryModel}", tone="${this.tone}", autoApprove=${this.autoApprove}
 
 Please present your behavior, response style, and tone exactly matching: "${this.tone}".
@@ -164,7 +182,8 @@ Use the provided tools/functions framework. Always state what you are doing befo
           if (onStream) {
             onStream(`\n\x1b[33m⚡ Writing file: ${args.path}...\x1b[0m\n`);
           }
-          await fsPromises.writeFile(args.path, args.content || '', 'utf8');
+          const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(this.cwd, args.path);
+          await fsPromises.writeFile(targetPath, args.content || '', 'utf8');
           return `Successfully wrote to file ${args.path}`;
         }
       },
@@ -185,7 +204,8 @@ Use the provided tools/functions framework. Always state what you are doing befo
           if (onStream) {
             onStream(`\n\x1b[33m⚡ Reading file: ${args.path}...\x1b[0m\n`);
           }
-          return await fsPromises.readFile(args.path, 'utf8');
+          const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(this.cwd, args.path);
+          return await fsPromises.readFile(targetPath, 'utf8');
         }
       },
       {
@@ -412,7 +432,7 @@ Use the provided tools/functions framework. Always state what you are doing befo
         return;
       }
 
-      childProcess.exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+      childProcess.exec(cmd, { timeout: 30000, cwd: this.cwd }, (error, stdout, stderr) => {
         let result = '';
         if (stdout) result += stdout;
         if (stderr) result += `\nStderr:\n${stderr}`;

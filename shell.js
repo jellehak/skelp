@@ -188,7 +188,8 @@ export class SkelpShell {
 
   getStatusContent(statusText) {
     const stats = this.client.getMessageStats ? this.client.getMessageStats() : { count: 0, sizeStr: '0 B' };
-    return ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}  |  Messages: {magenta-fg}${stats.count} (${stats.sizeStr}){/magenta-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`;
+    const cwdDisplay = this.client.cwd ? (this.client.cwd.replace(process.env.HOME || '', '~')) : process.cwd();
+    return ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  CWD: {blue-fg}${cwdDisplay}{/blue-fg}  |  Messages: {magenta-fg}${stats.count} (${stats.sizeStr}){/magenta-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`;
   }
 
   updateStatus(statusText) {

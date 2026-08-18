@@ -35,6 +35,8 @@ skelp
 ### Slash Commands (Inside Shell)
 You can type convenient slash commands directly into the prompt:
 - `/help` — Display list of commands.
+- `/pwd` — Print current working directory.
+- `/cd <path>` — Change current working directory.
 - `/clear` — Clear the terminal chat window.
 - `/fresh` or `/new` — Start a fresh chat session and clear conversation context (`Ctrl+N`).
 - `/models` — Query and list available models from the server.
