@@ -113,7 +113,7 @@ Use the provided tools/functions framework. Always state what you are doing befo
 
     this.chatHistory.push({ role: 'user', content: prompt });
 
-    // Define native tools structures
+    // Define native tools structures and their execution handlers (cb)
     const tools = [
       {
         type: 'function',
@@ -126,6 +126,23 @@ Use the provided tools/functions framework. Always state what you are doing befo
               command: { type: 'string', description: 'The exact shell command to run.' }
             },
             required: ['command']
+          }
+        },
+        handler: async (args) => {
+          let shouldExecute = true;
+          if (!this.autoApprove) {
+            shouldExecute = await this.askForConfirmation(args.command, readlineInterface);
+          }
+          if (shouldExecute) {
+            if (onStream) {
+              onStream(`\n\x1b[33m⚡ Executing command: ${args.command}...\x1b[0m\n`);
+            }
+            return await this.runCommand(args.command);
+          } else {
+            if (onStream) {
+              onStream(`\n\x1b[31mx Execution skipped.\x1b[0m\n`);
+            }
+            return 'Action execution was denied/cancelled by the user.';
           }
         }
       },
@@ -142,6 +159,13 @@ Use the provided tools/functions framework. Always state what you are doing befo
             },
             required: ['path', 'content']
           }
+        },
+        handler: async (args) => {
+          if (onStream) {
+            onStream(`\n\x1b[33m⚡ Writing file: ${args.path}...\x1b[0m\n`);
+          }
+          await fsPromises.writeFile(args.path, args.content || '', 'utf8');
+          return `Successfully wrote to file ${args.path}`;
         }
       },
       {
@@ -156,9 +180,18 @@ Use the provided tools/functions framework. Always state what you are doing befo
             },
             required: ['path']
           }
+        },
+        handler: async (args) => {
+          if (onStream) {
+            onStream(`\n\x1b[33m⚡ Reading file: ${args.path}...\x1b[0m\n`);
+          }
+          return await fsPromises.readFile(args.path, 'utf8');
         }
       }
     ];
+
+    const toolSchemas = tools.map(({ handler, ...schema }) => schema);
+    const toolHandlers = new Map(tools.map(t => [t.function.name, t.handler]));
 
     let loop = true;
     let maxSteps = 5;
@@ -176,7 +209,7 @@ Use the provided tools/functions framework. Always state what you are doing befo
           body: JSON.stringify({
             model: this.primaryModel,
             messages: this.chatHistory,
-            tools: tools,
+            tools: toolSchemas,
             tool_choice: 'auto',
             stream: true
           })
@@ -252,41 +285,16 @@ Use the provided tools/functions framework. Always state what you are doing befo
         logger.logMessage('assistant', fullReply || `[Tool Call: ${JSON.stringify(toolCalls)}]`);
       }
 
-      // 1. Process Native Tool Calls if available
+      // Process Native Tool Calls via registered callbacks
       if (toolCalls.length > 0) {
         for (const tc of toolCalls) {
           let toolResult = '';
+          const actionName = tc.function.name;
           try {
             const argsObj = JSON.parse(tc.function.arguments || '{}');
-            const actionName = tc.function.name;
-            let shouldExecute = true;
-
-            if (actionName === 'execute_command') {
-              if (!this.autoApprove) {
-                shouldExecute = await this.askForConfirmation(argsObj.command, readlineInterface);
-              }
-              if (shouldExecute) {
-                if (onStream) {
-                  onStream(`\n\x1b[33m⚡ Executing command: ${argsObj.command}...\x1b[0m\n`);
-                }
-                toolResult = await this.runCommand(argsObj.command);
-              } else {
-                toolResult = 'Action execution was denied/cancelled by the user.';
-                if (onStream) {
-                  onStream(`\n\x1b[31mx Execution skipped.\x1b[0m\n`);
-                }
-              }
-            } else if (actionName === 'write_file') {
-              if (onStream) {
-                onStream(`\n\x1b[33m⚡ Writing file: ${argsObj.path}...\x1b[0m\n`);
-              }
-              await fsPromises.writeFile(argsObj.path, argsObj.content || '', 'utf8');
-              toolResult = `Successfully wrote to file ${argsObj.path}`;
-            } else if (actionName === 'read_file') {
-              if (onStream) {
-                onStream(`\n\x1b[33m⚡ Reading file: ${argsObj.path}...\x1b[0m\n`);
-              }
-              toolResult = await fsPromises.readFile(argsObj.path, 'utf8');
+            const handler = toolHandlers.get(actionName);
+            if (handler) {
+              toolResult = await handler(argsObj);
             } else {
               toolResult = `Unknown tool: ${actionName}`;
             }
