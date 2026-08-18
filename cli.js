@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { parseArgs } from './lib/parseArgs.js';
-import { loadConfig, saveConfig } from './lib/config.js';
+import { loadConfig } from './lib/config.js';
 import { AIClient } from './client.js';
 import { SkelpShell } from './shell.js';
+import { executeCommand } from './lib/commands.js';
 
 async function main() {
   const definitions = {
@@ -39,10 +40,15 @@ async function main() {
     process.exit(0);
   }
 
-  // Handle CLI config subcommands directly (e.g. skelp config get, skelp config set <key> <val>, skelp config list)
-  if (positionalArgs[0]?.toLowerCase() === 'config') {
-    handleConfigCli(positionalArgs.slice(1));
-    return;
+  // Handle CLI config or built-in subcommands (e.g. skelp config get, skelp models, skelp help)
+  const isCommand = positionalArgs.length > 0 && ['config', 'models', 'help'].includes(positionalArgs[0].toLowerCase());
+  if (isCommand) {
+    const cmdStr = positionalArgs.join(' ');
+    const handled = await executeCommand(cmdStr, {
+      client: new AIClient(loadConfig()),
+      print: (text) => console.log(stripBlessedTags(text))
+    });
+    if (handled) process.exit(0);
   }
 
   // Load RC configuration and override with CLI parameters if provided
@@ -72,54 +78,25 @@ async function main() {
   }
 }
 
-function handleConfigCli(subArgs) {
-  const action = subArgs[0]?.toLowerCase();
-  const currentConfig = loadConfig();
-
-  if (!action || action === 'list' || action === 'show') {
-    console.log('\n\x1b[1m\x1b[36mCurrent Skelp Configuration:\x1b[0m');
-    for (const [k, v] of Object.entries(currentConfig)) {
-      console.log(`  \x1b[33m${k}\x1b[0m: ${JSON.stringify(v)}`);
-    }
-    console.log();
-    process.exit(0);
-  }
-
-  if (action === 'get') {
-    const key = subArgs[1];
-    if (!key) {
-      console.error('\x1b[31mError: Key is required for "config get <key>".\x1b[0m');
-      process.exit(1);
-    }
-    if (key in currentConfig) {
-      console.log(currentConfig[key]);
-    } else {
-      console.error(`\x1b[31mKey "${key}" not found in configuration.\x1b[0m`);
-      process.exit(1);
-    }
-    process.exit(0);
-  }
-
-  if (action === 'set') {
-    const key = subArgs[1];
-    let val = subArgs.slice(2).join(' ');
-
-    if (!key || val === undefined || val === '') {
-      console.error('\x1b[31mError: Usage: skelp config set <key> <value>\x1b[0m');
-      process.exit(1);
-    }
-
-    if (val === 'true') val = true;
-    else if (val === 'false') val = false;
-
-    const payload = { [key]: val };
-    saveConfig(payload);
-    console.log(`\x1b[32m✔ Configuration updated: ${key} = ${JSON.stringify(val)}\x1b[0m`);
-    process.exit(0);
-  }
-
-  console.error(`\x1b[31mUnknown config command "${action}". Use "get", "set", or "list".\x1b[0m`);
-  process.exit(1);
+function stripBlessedTags(str) {
+  return str
+    .replace(/\{bold\}/g, '\x1b[1m')
+    .replace(/\{\/bold\}/g, '\x1b[22m')
+    .replace(/\{dim\}/g, '\x1b[2m')
+    .replace(/\{\/dim\}/g, '\x1b[22m')
+    .replace(/\{cyan-fg\}/g, '\x1b[36m')
+    .replace(/\{\/cyan-fg\}/g, '\x1b[39m')
+    .replace(/\{green-fg\}/g, '\x1b[32m')
+    .replace(/\{\/green-fg\}/g, '\x1b[39m')
+    .replace(/\{yellow-fg\}/g, '\x1b[33m')
+    .replace(/\{\/yellow-fg\}/g, '\x1b[39m')
+    .replace(/\{red-fg\}/g, '\x1b[31m')
+    .replace(/\{\/red-fg\}/g, '\x1b[39m')
+    .replace(/\{blue-fg\}/g, '\x1b[34m')
+    .replace(/\{\/blue-fg\}/g, '\x1b[39m')
+    .replace(/\{magenta-fg\}/g, '\x1b[35m')
+    .replace(/\{\/magenta-fg\}/g, '\x1b[39m')
+    .replace(/\{[a-z0-9#-]+-fg\}|\{\/[a-z0-9#-]+-fg\}/gi, '');
 }
 
 function printHelp() {

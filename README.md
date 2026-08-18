@@ -32,17 +32,21 @@ Launch the interactive shell simply by running:
 skelp
 ```
 
-Inside the shell, you can task the assistant with prompts or run built-in actions:
-- `change server to http://localhost:5678` — Swaps the endpoint server and persists settings.
-- `change model to llama-3` — Swaps the targeted model.
-- `change tone to poetic and witty` — Adjusts conversational personality.
-- `change auto-approve to true` — Bypasses execution prompts.
-- `which models are available?` — Asks the server for the list of available models.
-- `clear` — Clears the terminal screen.
-- `exit` or `quit` — Exists the interactive environment.
+### Slash Commands (Inside Shell)
+You can type convenient slash commands directly into the prompt:
+- `/help` — Display list of commands.
+- `/clear` — Clear the terminal chat window.
+- `/fresh` or `/new` — Start a fresh chat session and clear conversation context (`Ctrl+N`).
+- `/models` — Query and list available models from the server.
+- `/config list` — Show all active configurations.
+- `/config get <key>` — View specific configuration setting.
+- `/config set <key> <value>` — Update configuration setting.
+- `/config reset` or `/reset` — Reset configuration back to original defaults.
+- `/exit` or `/quit` — Exit the shell.
 
 ### Keyboard Shortcuts
 - **`Ctrl+N`**: Instantly starts a fresh session, clears conversation context history, and generates a new log file.
+- **`Ctrl+C`**: Exit the shell.
 
 ### One-Off Tasks
 Run tasks directly from your default shell:
@@ -60,6 +64,7 @@ skelp config get tone
 skelp config set server http://localhost:5678
 skelp config set tone "formal and professional"
 skelp config set autoApprove true
+skelp config reset
 ```
 
 ## Configuration

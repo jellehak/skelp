@@ -2,6 +2,7 @@ import blessed from 'blessed';
 import { saveConfig } from './lib/config.js';
 import { formatMarkdown } from './lib/formatter.js';
 import { ChatLogger } from './lib/logger.js';
+import { executeCommand } from './lib/commands.js';
 
 export class SkelpShell {
   constructor(client) {
@@ -148,19 +149,6 @@ export class SkelpShell {
         return;
       }
 
-      const lowerInput = input.toLowerCase();
-
-      if (lowerInput === 'exit' || lowerInput === 'quit') {
-        return process.exit(0);
-      }
-
-      if (lowerInput === 'clear') {
-        this.historyBox.setContent('');
-        this.inputField.focus();
-        this.screen.render();
-        return;
-      }
-
       this.historyBox.log(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}`);
       this.screen.render();
 
@@ -168,7 +156,19 @@ export class SkelpShell {
       this.updateStatus('Thinking...');
 
       try {
-        await this.handleInput(input);
+        // First, check if input is a registered command (e.g., /help, /config, /models, /clear, /fresh, /exit)
+        const handled = await executeCommand(input, {
+          client: this.client,
+          shell: this,
+          print: (msg) => {
+            this.historyBox.log(msg);
+            this.screen.render();
+          }
+        });
+
+        if (!handled) {
+          await this.handleInput(input);
+        }
       } catch (err) {
         this.historyBox.log(`{red-fg}Error: ${err.message}{/red-fg}`);
       } finally {
@@ -193,6 +193,12 @@ export class SkelpShell {
 
   updateStatus(statusText) {
     this.statusBar.setContent(this.getStatusContent(statusText));
+    this.screen.render();
+  }
+
+  clearChat() {
+    this.historyBox.setContent('');
+    this.inputField.focus();
     this.screen.render();
   }
 

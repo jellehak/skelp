@@ -24,3 +24,13 @@ When the user requests to inspect, change, or update any configuration setting i
 ```
 
 After updating, confirm the change to the user in a friendly manner matching your tone.
+
+## Listing Available Models
+When the user asks which models are available on the server (e.g. "Which models are available?", "List models", "What models can I use?"), you can query the active server's `/v1/models` endpoint directly using `execute_command` with `curl`:
+
+```sh
+curl -s http://localhost:1234/v1/models
+```
+*(Replace `http://localhost:1234` with the active server URL from your system prompt metadata).*
+
+Parse the resulting JSON `data` array and present the model IDs clearly to the user.
