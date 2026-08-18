@@ -6,6 +6,7 @@ import { promises as fsPromises } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { OpenAIClient } from './client.js';
 import { saveConfig } from './lib/config.js';
+import registerFsTools from './skills/filesystem/tools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,14 +85,22 @@ export class AIAgent {
    * Builds the system prompt including dynamic meta and skills.
    */
   buildSystemPrompt() {
-    let skillConfigPrompt = '';
+    let skillPrompts = '';
     try {
-      const skillPath = path.join(__dirname, 'skills', 'config', 'SKILL.md');
-      if (fs.existsSync(skillPath)) {
-        skillConfigPrompt = '\n\n' + fs.readFileSync(skillPath, 'utf8');
+      const skillsDir = path.join(__dirname, 'skills');
+      if (fs.existsSync(skillsDir)) {
+        const skillEntries = fs.readdirSync(skillsDir, { withFileTypes: true });
+        for (const entry of skillEntries) {
+          if (entry.isDirectory()) {
+            const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
+            if (fs.existsSync(skillFile)) {
+              skillPrompts += '\n\n' + fs.readFileSync(skillFile, 'utf8');
+            }
+          }
+        }
       }
     } catch (e) {
-      // Ignore if skills file is missing
+      // Ignore if skills cannot be read
     }
 
     return `You are Skelp, a minimal agentic terminal developer assistant.
@@ -106,13 +115,15 @@ Please present your behavior, response style, and tone exactly matching: "${this
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
-Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillConfigPrompt}`;
+Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillPrompts}`;
   }
 
   /**
    * Builds the available tools with their schema definitions and execution handlers.
    */
   buildTools(onStream, readlineInterface) {
+    const fsTools = registerFsTools({ onStream, cwd: this.cwd });
+
     return [
       {
         type: 'function',
@@ -145,6 +156,7 @@ Use the provided tools/functions framework. Always state what you are doing befo
           }
         }
       },
+      ...fsTools,
       {
         type: 'function',
         function: {

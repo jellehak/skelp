@@ -21,7 +21,7 @@ export default function registerFsTools({ onStream, cwd }) {
             if (onStream) {
                 onStream(`\n\x1b[33m⚡ Writing file: ${args.path}...\x1b[0m\n`);
             }
-            const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(this.cwd, args.path);
+            const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(cwd, args.path);
             await fsPromises.writeFile(targetPath, args.content || '', 'utf8');
             return `Successfully wrote to file ${args.path}`;
         }
@@ -43,7 +43,7 @@ export default function registerFsTools({ onStream, cwd }) {
             if (onStream) {
                 onStream(`\n\x1b[33m⚡ Reading file: ${args.path}...\x1b[0m\n`);
             }
-            const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(this.cwd, args.path);
+            const targetPath = path.isAbsolute(args.path) ? args.path : path.resolve(cwd, args.path);
             return await fsPromises.readFile(targetPath, 'utf8');
         }
     }]
