@@ -187,6 +187,44 @@ Use the provided tools/functions framework. Always state what you are doing befo
           }
           return await fsPromises.readFile(args.path, 'utf8');
         }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'update_config',
+          description: 'Updates configuration settings for Skelp (server URL, primaryModel, tone, or autoApprove).',
+          parameters: {
+            type: 'object',
+            properties: {
+              key: {
+                type: 'string',
+                description: 'The configuration key to update: "server", "primaryModel", "tone", or "autoApprove".',
+                enum: ['server', 'primaryModel', 'tone', 'autoApprove']
+              },
+              value: {
+                type: 'string',
+                description: 'The new value for the configuration key. (For autoApprove, use "true" or "false").'
+              }
+            },
+            required: ['key', 'value']
+          }
+        },
+        handler: async (args) => {
+          let val = args.value;
+          if (args.key === 'autoApprove') {
+            val = String(args.value).toLowerCase() === 'true';
+          }
+          const updatePayload = { [args.key]: val };
+          this.updateConfig(updatePayload);
+          saveConfig(updatePayload);
+          if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+            readlineInterface.updateStatus('Ready');
+          }
+          if (onStream) {
+            onStream(`\n\x1b[32m✔ Configuration updated: ${args.key} = ${val}\x1b[0m\n`);
+          }
+          return `Successfully updated configuration "${args.key}" to "${val}".`;
+        }
       }
     ];
 

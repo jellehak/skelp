@@ -1,11 +1,11 @@
 ---
-name: configuration_management
-description: Instructions for managing and updating Skelp configuration settings via CLI commands.
+name: update_configuration
+description: Instructions and tool definitions for managing and updating Skelp configuration settings dynamically.
 ---
 
 # Configuration Management Skill
 
-You can inspect or update user settings and environment configurations for Skelp by running `skelp config` shell commands using the `execute_command` tool.
+You are capable of updating user settings and environment configurations for Skelp dynamically via function/tool calls or CLI commands.
 
 ## Supported Configuration Keys:
 - `server` (string): The OpenAI-compatible API endpoint base URL (e.g., `http://localhost:1234`, `http://localhost:5678`).
@@ -13,17 +13,14 @@ You can inspect or update user settings and environment configurations for Skelp
 - `tone` (string): The personality, tone, or style of your responses (e.g., `formal and professional`, `concise, friendly and helpful`, `witty and poetic`).
 - `autoApprove` (boolean): Whether commands are executed automatically without user confirmation prompts (`true` or `false`).
 
-## CLI Commands
-When the user asks to view or change settings (e.g., "Change the server to http://localhost:5678", "Set the tone to formal and professional", or "Show my current config"), execute the appropriate `skelp config` command via `execute_command`:
+## Tool Usage
+When the user requests to inspect, change, or update any configuration setting in natural language (such as "Change the server to http://localhost:5678", "Set the tone to formal and professional", or "Switch to model llama-3"), invoke the `update_config` tool:
 
-- View all settings: `skelp config list`
-- View a specific setting: `skelp config get <key>`
-- Update a setting: `skelp config set <key> <value>`
+```json
+{
+  "key": "server",
+  "value": "http://localhost:5678"
+}
+```
 
-Examples:
-- `skelp config set server http://localhost:5678`
-- `skelp config set tone "formal and professional"`
-- `skelp config set primaryModel llama-3`
-- `skelp config set autoApprove true`
-
-After the command runs, confirm the updated setting to the user in a tone matching your personality.
+After updating, confirm the change to the user in a friendly manner matching your tone.
