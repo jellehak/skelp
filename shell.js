@@ -216,33 +216,92 @@ export class SkelpShell {
   }
 
   async handleInput(input) {
-    let responseContainerLog = '';
-    let reasoningLog = '';
+    // Array of blocks: { type: 'reasoning' | 'text' | 'function', name?: string, arguments?: string, content?: string, bytes?: number }
+    const blocks = [];
     
     await this.client.executeGoal(input, (chunk) => {
       if (typeof chunk === 'string') {
-        responseContainerLog += chunk;
+        let lastBlock = blocks[blocks.length - 1];
+        if (!lastBlock || lastBlock.type !== 'text') {
+          lastBlock = { type: 'text', content: '' };
+          blocks.push(lastBlock);
+        }
+        lastBlock.content += chunk;
       } else if (chunk && typeof chunk === 'object') {
         const contentDelta = chunk.content || '';
         const reasoningDelta = chunk.reasoning_content || chunk.reasoning || '';
 
         if (reasoningDelta) {
-          reasoningLog += reasoningDelta;
+          let lastBlock = blocks[blocks.length - 1];
+          if (!lastBlock || lastBlock.type !== 'reasoning') {
+            lastBlock = { type: 'reasoning', content: '' };
+            blocks.push(lastBlock);
+          }
+          lastBlock.content += reasoningDelta;
         }
+
         if (contentDelta) {
-          responseContainerLog += contentDelta;
+          let lastBlock = blocks[blocks.length - 1];
+          if (!lastBlock || lastBlock.type !== 'text') {
+            lastBlock = { type: 'text', content: '' };
+            blocks.push(lastBlock);
+          }
+          lastBlock.content += contentDelta;
+        }
+
+        if (chunk.tool_calls && Array.isArray(chunk.tool_calls)) {
+          for (const tc of chunk.tool_calls) {
+            const idx = tc.index ?? 0;
+            // Find or create function block for this tool call index/id
+            let fnBlock = blocks.find((b) => b.type === 'function' && (b.id === tc.id || (b.index === idx && tc.id === undefined)));
+            if (!fnBlock) {
+              fnBlock = {
+                type: 'function',
+                index: idx,
+                id: tc.id || '',
+                name: tc.function?.name || '',
+                arguments: ''
+              };
+              blocks.push(fnBlock);
+            }
+            if (tc.id) fnBlock.id = tc.id;
+            if (tc.function?.name) fnBlock.name = tc.function.name;
+            if (tc.function?.arguments) fnBlock.arguments += tc.function.arguments;
+          }
         }
       }
-      
-      // Build display text including reasoning if present
-      let displayedContent = '';
-      if (reasoningLog) {
-        displayedContent += `\x1b[dim][Thinking: ${reasoningLog}]\x1b[0m\n\n`;
+
+      // Render the structured blocks array into the terminal view
+      let formattedOutput = '';
+
+      for (const block of blocks) {
+        if (block.type === 'reasoning') {
+          formattedOutput += `\x1b[dim][Thinking: ${block.content}]\x1b[0m\n\n`;
+        } else if (block.type === 'text') {
+          formattedOutput += block.content;
+        } else if (block.type === 'function') {
+          const rawArgs = block.arguments || '';
+          const bytes = Buffer.byteLength(rawArgs, 'utf8');
+          let sizeStr = `${bytes} B`;
+          if (bytes >= 1024) {
+            sizeStr = `${(bytes / 1024).toFixed(1)} KB`;
+          }
+
+          let detail = '';
+          const pathMatch = rawArgs.match(/"path"\s*:\s*"([^"]+)"/);
+          const cmdMatch = rawArgs.match(/"command"\s*:\s*"([^"]*)/);
+          if (pathMatch) {
+            detail = ` ${pathMatch[1]}`;
+          } else if (cmdMatch) {
+            detail = ` ${cmdMatch[1].slice(0, 50)}`;
+          }
+
+          formattedOutput += `\n\x1b[33m⚡ Tool Call: ${block.name || 'tool'}${detail} (${sizeStr})...\x1b[0m\n`;
+        }
       }
-      displayedContent += responseContainerLog;
 
       // Escape curly brackets to avoid blessed parser misinterpreting layout templates
-      let viewText = displayedContent
+      let viewText = formattedOutput
         .replace(/\{/g, '⦃')
         .replace(/\}/g, '⦄')
         .replace(/\n⚡ Executing command:\s*(.*?)\.\.\./g, '\n{yellow-fg}{bold}⚡ Executing: $1...{/bold}{/yellow-fg}')
@@ -253,7 +312,7 @@ export class SkelpShell {
         .replace(/\*\*(.*?)\*\*/g, '{bold}$1{/bold}')
         .replace(/`(.*?)`/g, '{cyan-fg}$1{/cyan-fg}');
 
-      // Remove last line log and redraw
+      // Update chat box
       this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}${ASSISTENT_NAME}:{/bold}{/magenta-fg}\n${viewText}`);
       this.historyBox.scroll(100);
       this.screen.render();

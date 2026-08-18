@@ -124,7 +124,7 @@ Use the provided tools/functions framework. Always state what you are doing befo
    * Builds the available tools with their schema definitions and execution handlers.
    */
   buildTools(onStream, readlineInterface) {
-    const fsTools = registerFsTools({ onStream, cwd: this.cwd });
+    const fsTools = registerFsTools({ onStream, cwd: this.cwd, readlineInterface });
 
     return [
       {
@@ -140,12 +140,28 @@ Use the provided tools/functions framework. Always state what you are doing befo
             required: ['command']
           }
         },
+        onChunk: ({ accumulatedArgs }) => {
+          let commandPreview = '';
+          const match = (accumulatedArgs || '').match(/"command"\s*:\s*"([^"]*)/);
+          if (match) {
+            commandPreview = match[1];
+          }
+          if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+            readlineInterface.updateStatus(commandPreview ? `Command: ${commandPreview.slice(0, 40)}...` : 'Preparing command...');
+          }
+        },
         handler: async (args) => {
           let shouldExecute = true;
           if (!this.autoApprove) {
+            if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+              readlineInterface.updateStatus('Awaiting confirmation...');
+            }
             shouldExecute = await this.askForConfirmation(args.command, readlineInterface);
           }
           if (shouldExecute) {
+            if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+              readlineInterface.updateStatus(`Executing: ${args.command}...`);
+            }
             if (onStream) {
               onStream(`\n\x1b[33m⚡ Executing command: ${args.command}...\x1b[0m\n`);
             }
@@ -181,6 +197,9 @@ Use the provided tools/functions framework. Always state what you are doing befo
           }
         },
         handler: async (args) => {
+          if (readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+            readlineInterface.updateStatus(`Updating config: ${args.key}...`);
+          }
           let val = args.value;
           if (args.key === 'autoApprove') {
             val = String(args.value).toLowerCase() === 'true';
@@ -218,8 +237,9 @@ Use the provided tools/functions framework. Always state what you are doing befo
     this.chatHistory.push({ role: 'user', content: prompt });
 
     const tools = this.buildTools(onStream, readlineInterface);
-    const toolSchemas = tools.map(({ handler, ...schema }) => schema);
+    const toolSchemas = tools.map(({ handler, onChunk, ...schema }) => schema);
     const toolHandlers = new Map(tools.map((t) => [t.function.name, t.handler]));
+    const toolChunkHandlers = new Map(tools.filter((t) => typeof t.onChunk === 'function').map((t) => [t.function.name, t.onChunk]));
 
     let loop = true;
     let maxSteps = 5;
@@ -227,6 +247,8 @@ Use the provided tools/functions framework. Always state what you are doing befo
     while (loop && maxSteps > 0) {
       maxSteps--;
       let response;
+
+      const activeToolCalls = {};
 
       try {
         response = await this.client.chatCompletionStream({
@@ -236,6 +258,31 @@ Use the provided tools/functions framework. Always state what you are doing befo
           onChunk: (delta) => {
             // fileLog.write(JSON.stringify(delta, null, 2) + '\n');
             fileLog.write(JSON.stringify({ timestamp: new Date().toISOString(), delta }, null, 2) + '\n');
+
+            if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                if (!activeToolCalls[idx]) {
+                  activeToolCalls[idx] = { id: tc.id || '', name: tc.function?.name || '', arguments: '' };
+                }
+                if (tc.id) activeToolCalls[idx].id = tc.id;
+                if (tc.function?.name) activeToolCalls[idx].name = tc.function.name;
+                if (tc.function?.arguments) activeToolCalls[idx].arguments += tc.function.arguments;
+
+                const currentTool = activeToolCalls[idx];
+                const chunkHandler = toolChunkHandlers.get(currentTool.name);
+                if (chunkHandler) {
+                  chunkHandler({
+                    delta,
+                    toolCall: tc,
+                    accumulatedArgs: currentTool.arguments,
+                    name: currentTool.name
+                  });
+                } else if (currentTool.name && readlineInterface && typeof readlineInterface.updateStatus === 'function') {
+                  readlineInterface.updateStatus(`Tool: ${currentTool.name}...`);
+                }
+              }
+            }
 
             if (onStream) {
               onStream(delta);
