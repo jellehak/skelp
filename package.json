@@ -10,7 +10,9 @@
   "scripts": {
     "start": "node cli.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "blessed": "^0.1.81"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

@@ -1,4 +1,4 @@
-import readline from 'node:readline';
+import blessed from 'blessed';
 import { saveConfig } from './lib/config.js';
 import { formatMarkdown } from './lib/formatter.js';
 import { ChatLogger } from './lib/logger.js';
@@ -6,135 +6,190 @@ import { ChatLogger } from './lib/logger.js';
 export class SkelpShell {
   constructor(client) {
     this.client = client;
-    this.rl = null;
-    this.isProcessing = false;
     this.logger = new ChatLogger();
-    this.pasteBuffer = [];
-    this.pasteTimeout = null;
+    this.screen = null;
+    this.historyBox = null;
+    this.inputField = null;
+    this.statusBar = null;
+    this.isProcessing = false;
   }
 
   /**
-   * Starts the interactive shell.
+   * Starts the interactive shell using blessed library UI frames.
    */
   start() {
-    this.rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      prompt: '\nskelp> '
-    });
-
-    // Capture keypress streams to monitor Ctrl+N & enable smart pasted newline detection
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-      readline.emitKeypressEvents(process.stdin);
-      
-      process.stdin.on('keypress', (str, key) => {
-        // Intercept Ctrl+N (key.ctrl is true, key.name is 'n')
-        if (key && key.ctrl && key.name === 'n') {
-          this.freshSession();
-          return;
-        }
-        
-        // Ensure Ctrl+C still exits normally
-        if (key && key.ctrl && key.name === 'c') {
-          this.rl.close();
-        }
-      });
-    }
-
-    this.rl.on('SIGINT', () => {
-      if (this.isProcessing) {
-        // Allow canceling requests
-        console.log('\n\x1b[31mOperation cancelled.\x1b[0m');
-      } else {
-        this.rl.close();
+    this.screen = blessed.screen({
+      smartCSR: true,
+      title: 'Skelp — Terminal Assistant Shell',
+      cursor: {
+        artificial: true,
+        shape: 'line',
+        blink: true,
+        color: 'cyan'
       }
     });
 
-    this.renderHeader();
-    this.rl.prompt();
+    // Fixed Top Status Bar Frame
+    this.statusBar = blessed.box({
+      parent: this.screen,
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: 3,
+      align: 'left',
+      valign: 'middle',
+      content: ` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Assistent Status: {green-fg}Ready{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`,
+      tags: true,
+      border: {
+        type: 'line'
+      },
+      style: {
+        border: {
+          fg: 'cyan'
+        }
+      }
+    });
 
-    this.rl.on('line', async (line) => {
-      // Robust fast pasted line detection:
-      // When multiple lines are pasted, multiple 'line' events are emitted almost instantly.
-      // We collect fast consecutive line events in our buffer and delay execution slightly.
-      this.pasteBuffer.push(line);
+    // Main Log Area for chat interaction history
+    this.historyBox = blessed.log({
+      parent: this.screen,
+      top: 3,
+      left: 0,
+      width: '100%',
+      height: '92%-6',
+      keys: true,
+      scrollable: true,
+      alwaysScroll: true,
+      scrollbar: {
+        ch: ' ',
+        inverse: true
+      },
+      border: {
+        type: 'line'
+      },
+      style: {
+        border: {
+          fg: 'dim'
+        }
+      },
+      tags: true
+    });
 
-      if (this.pasteTimeout) {
-        clearTimeout(this.pasteTimeout);
+    // Static Border Frame for Interactive Textarea
+    const inputFrame = blessed.box({
+      parent: this.screen,
+      bottom: 0,
+      left: 0,
+      width: '100%',
+      height: 3,
+      border: {
+        type: 'line'
+      },
+      style: {
+        border: {
+          fg: 'cyan'
+        }
+      }
+    });
+
+    blessed.text({
+      parent: inputFrame,
+      top: 0,
+      left: 1,
+      content: 'skelp>',
+      style: {
+        fg: 'cyan',
+        bold: true
+      }
+    });
+
+    this.inputField = blessed.textbox({
+      parent: inputFrame,
+      top: 0,
+      left: 8,
+      width: '95%-8',
+      height: 1,
+      inputOnFocus: true,
+      keys: true
+    });
+
+    this.screen.key(['pageup', 'pagedown'], (ch, key) => {
+      if (key.name === 'pageup') this.historyBox.scroll(-5);
+      if (key.name === 'pagedown') this.historyBox.scroll(5);
+      this.screen.render();
+    });
+
+    this.screen.key(['C-n'], () => {
+      this.freshSession();
+    });
+
+    this.screen.key(['C-c'], () => {
+      return process.exit(0);
+    });
+
+    this.inputField.on('submit', async (text) => {
+      const input = text.trim();
+      this.inputField.clearValue();
+
+      if (!input) {
+        this.inputField.focus();
+        this.screen.render();
+        return;
       }
 
-      this.pasteTimeout = setTimeout(async () => {
-        const fullInput = this.pasteBuffer.join('\n').trim();
-        this.pasteBuffer = [];
-        this.pasteTimeout = null;
+      const lowerInput = input.toLowerCase();
 
-        if (!fullInput) {
-          this.rl.prompt();
-          return;
-        }
+      if (lowerInput === 'exit' || lowerInput === 'quit') {
+        return process.exit(0);
+      }
 
-        const lowerInput = fullInput.toLowerCase();
+      if (lowerInput === 'clear') {
+        this.historyBox.clear();
+        this.inputField.focus();
+        this.screen.render();
+        return;
+      }
 
-        if (lowerInput === 'exit' || lowerInput === 'quit') {
-          this.rl.close();
-          return;
-        }
+      this.historyBox.log(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}`);
+      this.screen.render();
 
-        if (lowerInput === 'clear') {
-          console.clear();
-          this.renderHeader();
-          this.rl.prompt();
-          return;
-        }
+      this.isProcessing = true;
+      this.updateStatus('Thinking...');
 
-        this.isProcessing = true;
-
-        try {
-          await this.handleInput(fullInput);
-        } catch (err) {
-          console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
-        } finally {
-          this.isProcessing = false;
-          this.rl.prompt();
-        }
-      }, 50); // Small 50ms buffer time window accommodates large pastes beautifully
+      try {
+        await this.handleInput(input);
+      } catch (err) {
+        this.historyBox.log(`{red-fg}Error: ${err.message}{/red-fg}`);
+      } finally {
+        this.isProcessing = false;
+        this.updateStatus('Ready');
+        this.inputField.focus();
+        this.screen.render();
+      }
     });
 
-    this.rl.on('close', () => {
-      console.log('\nGoodbye from Skelp!');
-      process.exit(0);
-    });
+    this.historyBox.log(`{bold}{cyan-fg}Skelp developer assistant interactive terminal ready!{/cyan-fg}{/bold}`);
+    this.historyBox.log(`Try writing a natural language prompt, or configure the environment using client directives.`);
+
+    this.screen.render();
+    this.inputField.focus();
   }
 
-  /**
-   * Clears the current conversation thread, instantiates a new logger and starts fresh.
-   */
+  updateStatus(statusText) {
+    this.statusBar.setContent(` {bold}{cyan-fg}SKELP SHELL{/cyan-fg}{/bold}  |  Assistent Status: {green-fg}${statusText}{/green-fg}  |  Model: {yellow-fg}${this.client.primaryModel}{/yellow-fg}  |  Server: {blue-fg}${this.client.server}{/blue-fg}\n {dim}Shortcut: [Ctrl+N] Fresh Session | [Ctrl+C] Quit | Tone: "${this.client.tone}"{/dim}`);
+    this.screen.render();
+  }
+
   freshSession() {
-    console.log('\n\x1b[33m🧹 Starting a fresh chat session with the assistant...\x1b[0m');
     this.client.clearHistory();
     this.logger = new ChatLogger();
-    console.clear();
-    this.renderHeader();
-    this.rl.prompt();
+    this.historyBox.clear();
+    this.historyBox.log(`{bold}{yellow-fg}🧹 Started a fresh chat session with the assistant.{/yellow-fg}{/bold}`);
+    this.updateStatus('Ready');
+    this.inputField.focus();
+    this.screen.render();
   }
 
-  /**
-   * Header indicating connection, readiness, the current model/server configuration.
-   */
-  renderHeader() {
-    console.log('\x1b[1m\x1b[36m=======================================================');
-    console.log(` SKELP SHELL — Model: ${this.client.primaryModel}`);
-    console.log(` Server: ${this.client.server}`);
-    console.log(` Tone: "${this.client.tone}"`);
-    console.log(' Shortcut: [Ctrl+N] - Start fresh chat session');
-    console.log('=======================================================\x1b[0m');
-    console.log('Type your tasks or questions in natural language. Type "exit" to leave.');
-  }
-
-  /**
-   * Handles commands or AI goal requests.
-   */
   async handleInput(input) {
     // 1. "Change the server to http://localhost:5678"
     const serverMatch = input.match(/^change\s+the\s+server\s+to\s+([^\s]+)/i) || 
@@ -144,23 +199,24 @@ export class SkelpShell {
       const newServer = serverMatch[1];
       this.client.updateConfig({ server: newServer });
       saveConfig({ server: newServer });
-      console.log(`\x1b[32m✔ Server successfully changed to ${newServer} and configuration saved.\x1b[0m`);
+      this.historyBox.log(`{green-fg}✔ Server successfully changed to ${newServer} and configuration saved.{/green-fg}`);
       return;
     }
 
     // 2. "Which models are available?" or "list models"
     if (/^which\s+models\s+are\s+available\??/i.test(input) || /^list\s+models/i.test(input) || /^models/i.test(input)) {
-      console.log('\x1b[33mRetrieving available models...\x1b[0m');
+      this.historyBox.log('{yellow-fg}Retrieving available models...{/yellow-fg}');
+      this.screen.render();
       try {
         const models = await this.client.getModels();
         if (models.length === 0) {
-          console.log('\x1b[33mNo models returned or service doesn\'t list models.\x1b[0m');
+          this.historyBox.log('{yellow-fg}No models returned or service doesn\'t list models.{/yellow-fg}');
         } else {
-          console.log('\x1b[32mAvailable Models:\x1b[0m');
-          models.forEach(model => console.log(`  - ${model}`));
+          this.historyBox.log('{green-fg}Available Models:{/green-fg}');
+          models.forEach(model => this.historyBox.log(`  - ${model}`));
         }
       } catch (err) {
-        console.error(`\x1b[31mFailed to get models: ${err.message}\x1b[0m`);
+        this.historyBox.log(`{red-fg}Failed to get models: ${err.message}{/red-fg}`);
       }
       return;
     }
@@ -172,11 +228,11 @@ export class SkelpShell {
       const newModel = modelMatch[1];
       this.client.updateConfig({ primaryModel: newModel });
       saveConfig({ primaryModel: newModel });
-      console.log(`\x1b[32m✔ Primary model changed to ${newModel} and configuration saved.\x1b[0m`);
+      this.historyBox.log(`{green-fg}✔ Primary model changed to ${newModel} and configuration saved.{/green-fg}`);
       return;
     }
 
-    // New natural language config helpers (e.g. "change tone to sarcastic and witty", "set server ...")
+    // New natural language config helpers
     const changeToneMatch = input.match(/^change\s+tone\s+to\s+(.+)/i) ||
                            input.match(/^set\s+tone\s+to\s+(.+)/i) ||
                            input.match(/^set\s+tone\s+(.+)/i);
@@ -184,7 +240,7 @@ export class SkelpShell {
       const newTone = changeToneMatch[1].trim();
       this.client.updateConfig({ tone: newTone });
       saveConfig({ tone: newTone });
-      console.log(`\x1b[32m✔ Tone changed to "${newTone}" and configuration saved.\x1b[0m`);
+      this.historyBox.log(`{green-fg}✔ Tone changed to "${newTone}" and configuration saved.{/green-fg}`);
       return;
     }
 
@@ -197,26 +253,67 @@ export class SkelpShell {
       const val = changeApproveMatch[1].trim().toLowerCase() === 'true';
       this.client.updateConfig({ autoApprove: val });
       saveConfig({ autoApprove: val });
-      console.log(`\x1b[32m✔ Auto-approve updated to ${val} and configuration saved.\x1b[0m`);
+      this.historyBox.log(`{green-fg}✔ Auto-approve updated to ${val} and configuration saved.{/green-fg}`);
       return;
     }
 
-    // 4. Default execution via Agentic client loop
-    process.stdout.write('\x1b[2mSkelp assistant is thinking...\x1b[0m\n');
-    let fullResponse = '';
+    // 4. Default execution via Agentic client loop in blessed Box
+    let responseContainerLog = '';
+    
     await this.client.executeGoal(input, (chunk) => {
-      // Accumulate assistant chunk response
-      fullResponse += chunk;
+      responseContainerLog += chunk;
       
-      // If the chunk is an execution header/result status, print it directly.
-      // Otherwise, format inline Markdown elements as they stream!
-      let formattedChunk = chunk
-        .replace(/\*\*(.*?)\*\//g, '\x1b[1m$1\x1b[22m')
-        .replace(/`(.*?)`/g, '\x1b[36m$1\x1b[39m');
-        
-      process.stdout.write(formattedChunk);
-    }, this.rl, this.logger);
+      // Escape curly brackets to avoid blessed parser misinterpreting layout templates
+      let viewText = responseContainerLog
+        .replace(/\{/g, '⦃')
+        .replace(/\}/g, '⦄')
+        .replace(/\n⚡ Executing command:\s*(.*?)\.\.\./g, '\n{yellow-fg}{bold}⚡ Executing: $1...{/bold}{/yellow-fg}')
+        .replace(/\n✔ Result:\n/g, '\n{green-fg}{bold}✔ Result:{/bold}{/green-fg}\n');
 
-    console.log();
+      // Style formatted items matching our simple formatting schema
+      viewText = viewText
+        .replace(/\*\*(.*?)\*\*/g, '{bold}$1{/bold}')
+        .replace(/`(.*?)`/g, '{cyan-fg}$1{/cyan-fg}');
+
+      // Remove last line log and redraw
+      this.historyBox.setContent(`\n{bold}{cyan-fg}You:{/cyan-fg}{/bold} ${input.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}\n\n{bold}{magenta-fg}Skelp Assistent:{/bold}{/magenta-fg}\n${viewText}`);
+      this.historyBox.scroll(100);
+      this.screen.render();
+    }, this);
+  }
+
+  /**
+   * Helper to prompt user for confirmation when a tool wants to run a shell command.
+   */
+  async askForConfirmation(command) {
+    return new Promise((resolve) => {
+      const confirmBox = blessed.question({
+        parent: this.screen,
+        top: 'center',
+        left: 'center',
+        width: '70%',
+        height: 'shrink',
+        label: ' {bold}{yellow-fg}Command Authorization Requested{/yellow-fg}{/bold} ',
+        border: {
+          type: 'line'
+        },
+        style: {
+          border: {
+            fg: 'yellow'
+          }
+        },
+        keys: true,
+        tags: true
+      });
+
+      confirmBox.ask(`The assistent wants to run this local command:\n\n{cyan-fg}${command.replace(/\{/g, '⦃').replace(/\}/g, '⦄')}{/cyan-fg}\n\nContinue?`, (err, value) => {
+        confirmBox.destroy();
+        this.inputField.focus();
+        this.screen.render();
+        resolve(value);
+      });
+
+      this.screen.render();
+    });
   }
 }
