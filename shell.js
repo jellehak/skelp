@@ -9,6 +9,8 @@ export class SkelpShell {
     this.rl = null;
     this.isProcessing = false;
     this.logger = new ChatLogger();
+    this.pasteBuffer = [];
+    this.pasteTimeout = null;
   }
 
   /**
@@ -21,7 +23,7 @@ export class SkelpShell {
       prompt: '\nskelp> '
     });
 
-    // Capture keypress streams to monitor Ctrl+N
+    // Capture keypress streams to monitor Ctrl+N & enable smart pasted newline detection
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
       readline.emitKeypressEvents(process.stdin);
@@ -53,36 +55,50 @@ export class SkelpShell {
     this.rl.prompt();
 
     this.rl.on('line', async (line) => {
-      const input = line.trim();
-      if (!input) {
-        this.rl.prompt();
-        return;
+      // Robust fast pasted line detection:
+      // When multiple lines are pasted, multiple 'line' events are emitted almost instantly.
+      // We collect fast consecutive line events in our buffer and delay execution slightly.
+      this.pasteBuffer.push(line);
+
+      if (this.pasteTimeout) {
+        clearTimeout(this.pasteTimeout);
       }
 
-      const lowerInput = input.toLowerCase();
+      this.pasteTimeout = setTimeout(async () => {
+        const fullInput = this.pasteBuffer.join('\n').trim();
+        this.pasteBuffer = [];
+        this.pasteTimeout = null;
 
-      if (lowerInput === 'exit' || lowerInput === 'quit') {
-        this.rl.close();
-        return;
-      }
+        if (!fullInput) {
+          this.rl.prompt();
+          return;
+        }
 
-      if (lowerInput === 'clear') {
-        console.clear();
-        this.renderHeader();
-        this.rl.prompt();
-        return;
-      }
+        const lowerInput = fullInput.toLowerCase();
 
-      this.isProcessing = true;
+        if (lowerInput === 'exit' || lowerInput === 'quit') {
+          this.rl.close();
+          return;
+        }
 
-      try {
-        await this.handleInput(input);
-      } catch (err) {
-        console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
-      } finally {
-        this.isProcessing = false;
-        this.rl.prompt();
-      }
+        if (lowerInput === 'clear') {
+          console.clear();
+          this.renderHeader();
+          this.rl.prompt();
+          return;
+        }
+
+        this.isProcessing = true;
+
+        try {
+          await this.handleInput(fullInput);
+        } catch (err) {
+          console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
+        } finally {
+          this.isProcessing = false;
+          this.rl.prompt();
+        }
+      }, 50); // Small 50ms buffer time window accommodates large pastes beautifully
     });
 
     this.rl.on('close', () => {
