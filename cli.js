@@ -11,7 +11,8 @@ async function main() {
     server: { type: 'string', alias: 's' },
     model: { type: 'string', alias: 'm' },
     help: { type: 'boolean', alias: 'h' },
-    yes: { type: 'boolean', alias: 'y' }
+    yes: { type: 'boolean', alias: 'y' },
+    tags: { type: 'string', alias: 't' }
   };
 
   let args;
@@ -40,11 +41,11 @@ async function main() {
     process.exit(0);
   }
 
-  // Handle CLI config or built-in subcommands (e.g. skelp config get, skelp models, skelp help)
-  const isCommand = positionalArgs.length > 0 && ['config', 'models', 'help'].includes(positionalArgs[0].toLowerCase());
+  // Handle CLI config, memory, or built-in subcommands (e.g. skelp config get, skelp memory list, skelp models, skelp help)
+  const isCommand = positionalArgs.length > 0 && ['config', 'memory', 'models', 'help'].includes(positionalArgs[0].toLowerCase());
   if (isCommand) {
-    const cmdStr = positionalArgs.join(' ');
-    const handled = await executeCommand(cmdStr, {
+    const rawCliArgs = process.argv.slice(2);
+    const handled = await executeCommand(rawCliArgs, {
       client: new AIClient(loadConfig()),
       print: (text) => console.log(stripBlessedTags(text))
     });
@@ -106,12 +107,20 @@ function printHelp() {
 \x1b[1mUsage:\x1b[0m
   skelp                       Start interactive natural-language shells.
   skelp [task/command]        Run a one-off natural-language prompt or action direct.
-  skelp config <get|set|list> Manage configuration settings.
+  skelp config <get|set|list|reset> Manage configuration settings.
+  skelp memory <list|get|add|remove> Manage persistent long-term memory.
 
 \x1b[1mConfig Commands:\x1b[0m
   skelp config list           Show all current configurations.
   skelp config get <key>      Get value for a configuration key.
   skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, autoApprove).
+  skelp config reset          Reset configuration back to defaults.
+
+\x1b[1mMemory Commands:\x1b[0m
+  skelp memory list           List all saved memory items.
+  skelp memory get <id>       View a specific memory item.
+  skelp memory add "<title>" "<content>" [--tags t1,t2] Save a memory.
+  skelp memory remove <id>    Delete a memory item.
 
 \x1b[1mOptions:\x1b[0m
   -s, --server <url>          Override OpenAI-compatible server URL (default: http://localhost:1234).

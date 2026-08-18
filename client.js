@@ -80,14 +80,20 @@ export class AIClient {
       logger.logMessage('user', prompt);
     }
 
-    let skillConfigPrompt = '';
+    let skillsPrompt = '';
     try {
-      const skillPath = path.join(__dirname, 'skills', 'config', 'SKILL.md');
-      if (fs.existsSync(skillPath)) {
-        skillConfigPrompt = '\n\n' + fs.readFileSync(skillPath, 'utf8');
+      const skillsDir = path.join(__dirname, 'skills');
+      if (fs.existsSync(skillsDir)) {
+        const skillFolders = fs.readdirSync(skillsDir);
+        for (const folder of skillFolders) {
+          const skillFile = path.join(skillsDir, folder, 'SKILL.md');
+          if (fs.existsSync(skillFile)) {
+            skillsPrompt += '\n\n' + fs.readFileSync(skillFile, 'utf8');
+          }
+        }
       }
     } catch (e) {
-      // Ignore if skills file is missing
+      // Ignore if skills loading fails
     }
 
     const systemPrompt = `You are Skelp, a minimal agentic terminal developer assistant.
@@ -102,7 +108,7 @@ Please present your behavior, response style, and tone exactly matching: "${this
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
-Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillConfigPrompt}`;
+Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillsPrompt}`;
 
     if (this.chatHistory.length === 0) {
       this.chatHistory.push({
