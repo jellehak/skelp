@@ -35,7 +35,7 @@ export class OpenAIClient {
 
   /**
    * Streams chat completions from OpenAI-compatible endpoint.
-   * Calls onChunk with content deltas.
+   * Calls onChunk with the raw delta object (containing content, reasoning_content, tool_calls, etc.).
    * Returns { content: string, toolCalls: Array }.
    */
   async chatCompletionStream({ messages, tools, toolChoice = 'auto', onChunk }) {
@@ -88,9 +88,10 @@ export class OpenAIClient {
               const chunk = delta.content || '';
               if (chunk) {
                 fullReply += chunk;
-                if (onChunk) {
-                  onChunk(chunk);
-                }
+              }
+
+              if (onChunk) {
+                onChunk(delta);
               }
 
               if (delta.tool_calls) {

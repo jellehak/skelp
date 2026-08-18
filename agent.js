@@ -11,6 +11,8 @@ import registerFsTools from './skills/filesystem/tools.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const fileLog = fs.createWriteStream(path.join(os.homedir(), '.skelp', 'logs', `skelp_request_${Date.now()}.log`), { flags: 'a' });
+
 export class AIAgent {
   constructor(config = {}) {
     this.client = new OpenAIClient(config);
@@ -231,9 +233,12 @@ Use the provided tools/functions framework. Always state what you are doing befo
           messages: this.chatHistory,
           tools: toolSchemas,
           toolChoice: 'auto',
-          onChunk: (chunk) => {
+          onChunk: (delta) => {
+            // fileLog.write(JSON.stringify(delta, null, 2) + '\n');
+            fileLog.write(JSON.stringify({ timestamp: new Date().toISOString(), delta }, null, 2) + '\n');
+
             if (onStream) {
-              onStream(chunk);
+              onStream(delta);
             }
           }
         });

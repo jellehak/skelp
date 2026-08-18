@@ -217,12 +217,32 @@ export class SkelpShell {
 
   async handleInput(input) {
     let responseContainerLog = '';
+    let reasoningLog = '';
     
     await this.client.executeGoal(input, (chunk) => {
-      responseContainerLog += chunk;
+      if (typeof chunk === 'string') {
+        responseContainerLog += chunk;
+      } else if (chunk && typeof chunk === 'object') {
+        const contentDelta = chunk.content || '';
+        const reasoningDelta = chunk.reasoning_content || chunk.reasoning || '';
+
+        if (reasoningDelta) {
+          reasoningLog += reasoningDelta;
+        }
+        if (contentDelta) {
+          responseContainerLog += contentDelta;
+        }
+      }
       
+      // Build display text including reasoning if present
+      let displayedContent = '';
+      if (reasoningLog) {
+        displayedContent += `\x1b[dim][Thinking: ${reasoningLog}]\x1b[0m\n\n`;
+      }
+      displayedContent += responseContainerLog;
+
       // Escape curly brackets to avoid blessed parser misinterpreting layout templates
-      let viewText = responseContainerLog
+      let viewText = displayedContent
         .replace(/\{/g, '⦃')
         .replace(/\}/g, '⦄')
         .replace(/\n⚡ Executing command:\s*(.*?)\.\.\./g, '\n{yellow-fg}{bold}⚡ Executing: $1...{/bold}{/yellow-fg}')
