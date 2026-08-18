@@ -10,6 +10,7 @@ export class AIClient {
     this.server = config.server;
     this.primaryModel = config.primaryModel;
     this.autoApprove = config.autoApprove || false;
+    this.tone = config.tone || 'concise, friendly and helpful';
     this.chatHistory = [];
   }
 
@@ -18,6 +19,9 @@ export class AIClient {
     this.primaryModel = config.primaryModel || this.primaryModel;
     if (config.autoApprove !== undefined) {
       this.autoApprove = config.autoApprove;
+    }
+    if (config.tone !== undefined) {
+      this.tone = config.tone;
     }
   }
 
@@ -63,6 +67,8 @@ Here is some dynamic workspace metadata:
 - Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
 - Current Date and Time: ${new Date().toString()}
 - Current Developer Directory: ${process.cwd()}
+
+Please present your behavior, response style, and tone exactly matching: "${this.tone}".
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:

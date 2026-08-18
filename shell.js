@@ -110,6 +110,7 @@ export class SkelpShell {
     console.log('\x1b[1m\x1b[36m=======================================================');
     console.log(` SKELP SHELL — Model: ${this.client.primaryModel}`);
     console.log(` Server: ${this.client.server}`);
+    console.log(` Tone: "${this.client.tone}"`);
     console.log(' Shortcut: [Ctrl+N] - Start fresh chat session');
     console.log('=======================================================\x1b[0m');
     console.log('Type your tasks or questions in natural language. Type "exit" to leave.');
@@ -156,6 +157,31 @@ export class SkelpShell {
       this.client.updateConfig({ primaryModel: newModel });
       saveConfig({ primaryModel: newModel });
       console.log(`\x1b[32m✔ Primary model changed to ${newModel} and configuration saved.\x1b[0m`);
+      return;
+    }
+
+    // New natural language config helpers (e.g. "change tone to sarcastic and witty", "set server ...")
+    const changeToneMatch = input.match(/^change\s+tone\s+to\s+(.+)/i) ||
+                           input.match(/^set\s+tone\s+to\s+(.+)/i) ||
+                           input.match(/^set\s+tone\s+(.+)/i);
+    if (changeToneMatch) {
+      const newTone = changeToneMatch[1].trim();
+      this.client.updateConfig({ tone: newTone });
+      saveConfig({ tone: newTone });
+      console.log(`\x1b[32m✔ Tone changed to "${newTone}" and configuration saved.\x1b[0m`);
+      return;
+    }
+
+    const changeApproveMatch = input.match(/^change\s+auto-approve\s+to\s+(true|false)/i) ||
+                              input.match(/^set\s+auto-approve\s+to\s+(true|false)/i) ||
+                              input.match(/^set\s+auto-approve\s+(true|false)/i) ||
+                              input.match(/^change\s+autoapprove\s+to\s+(true|false)/i) ||
+                              input.match(/^set\s+autoapprove\s+(true|false)/i);
+    if (changeApproveMatch) {
+      const val = changeApproveMatch[1].trim().toLowerCase() === 'true';
+      this.client.updateConfig({ autoApprove: val });
+      saveConfig({ autoApprove: val });
+      console.log(`\x1b[32m✔ Auto-approve updated to ${val} and configuration saved.\x1b[0m`);
       return;
     }
 
