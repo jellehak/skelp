@@ -49,57 +49,74 @@ export class AIClient {
 
   /**
    * Runs shell commands under agent supervision or as direct request.
-   * Utilizes tool calling if the assistant supports it, or a lightweight prompt loop to achieve goals.
+   * Utilizes OpenAI native tool calling formats if configured/supported, otherwise falls back to parsing JSON blocks.
    */
   async executeGoal(prompt, onStream, readlineInterface = null, logger = null) {
     if (logger) {
       logger.logMessage('user', prompt);
     }
-    // We define clean tools for the model to use if it wants:
-    // 1. execute_command: runs a shell command and returns output.
-    // 2. read_file: reads file contents.
-    // 3. write_file: writes code/text to a file.
-    
-    // Initialize our conversation context array if not present or load past turns
+
+    const systemPrompt = `You are Skelp, a minimal agentic terminal developer assistant.
+You can execute shell commands, read files, and write files to complete tasks on macOS/Linux.
+If the user's intent is simply to converse, reply with helpful natural language.
+If you need to query information or perform action steps:
+Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.`;
+
     if (this.chatHistory.length === 0) {
       this.chatHistory.push({
         role: 'system',
-        content: `You are Skelp, a minimal agentic terminal developer assistant.
-You can execute shell commands, read files, and write files to complete tasks on macOS/Linux.
-If the user's intent is simply to converse, reply with helpful natural language.
-If you need to query information or perform action steps (like compile, locate files, run scripts, summarize papers):
-Use the tool calling format or output steps. Since some local models do not support native function calling, you can also express actions in a structured Markdown format that we parse, OR we can provide native JSON tool calling if the model supports it.
-To maximize compatibility across various local models (Ollama, LM Studio, llama.cpp), write your text response and if you want to execute an action, output a JSON block matching this EXACT format on a line by itself:
-\`\`\`json-action
-{
-  "action": "execute_command",
-  "command": "npm run test"
-}
-\`\`\`
-Or:
-\`\`\`json-action
-{
-  "action": "write_file",
-  "path": "papers.md",
-  "content": "File content goes here..."
-}
-\`\`\`
-Or:
-\`\`\`json-action
-{
-  "action": "read_file",
-  "path": "somefile.txt"
-}
-\`\`\`
-
-Rules:
-1. Always state what you are doing before executing an action.
-2. Only run one action at a time. Wait for the user (shell) to provide the tool execution output in the next message.
-3. Be concise and practical. Keep files and outputs structured.`
+        content: systemPrompt
       });
     }
 
     this.chatHistory.push({ role: 'user', content: prompt });
+
+    // Define native tools structures
+    const tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'execute_command',
+          description: 'Runs a shell command on the local machine and returns CLI output. Must NOT be an interactive command.',
+          parameters: {
+            type: 'object',
+            properties: {
+              command: { type: 'string', description: 'The exact shell command to run.' }
+            },
+            required: ['command']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'write_file',
+          description: 'Writes/Saves content text to a specified file path.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Destination file path.' },
+              content: { type: 'string', description: 'The text content to write.' }
+            },
+            required: ['path', 'content']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'read_file',
+          description: 'Reads contents of a file on the local file system.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Source file path to read.' }
+            },
+            required: ['path']
+          }
+        }
+      }
+    ];
 
     let loop = true;
     let maxSteps = 5;
@@ -107,6 +124,7 @@ Rules:
     while (loop && maxSteps > 0) {
       maxSteps--;
       let fullReply = '';
+      let toolCalls = [];
       
       try {
         const url = `${this.server.replace(/\/+$/, '')}/v1/chat/completions`;
@@ -116,6 +134,8 @@ Rules:
           body: JSON.stringify({
             model: this.primaryModel,
             messages: this.chatHistory,
+            tools: tools,
+            tool_choice: 'auto',
             stream: true
           })
         });
@@ -143,11 +163,28 @@ Rules:
             if (cleanLine.startsWith('data: ')) {
               try {
                 const jsonDoc = JSON.parse(cleanLine.slice(6));
-                const chunk = jsonDoc.choices?.[0]?.delta?.content || '';
-                if (chunk) {
-                  fullReply += chunk;
-                  if (onStream) {
-                    onStream(chunk);
+                const delta = jsonDoc.choices?.[0]?.delta;
+                
+                if (delta) {
+                  const chunk = delta.content || '';
+                  if (chunk) {
+                    fullReply += chunk;
+                    if (onStream) {
+                      onStream(chunk);
+                    }
+                  }
+
+                  // Handle native tool calls stream
+                  if (delta.tool_calls) {
+                    for (const tc of delta.tool_calls) {
+                      const idx = tc.index ?? 0;
+                      if (!toolCalls[idx]) {
+                        toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                      }
+                      if (tc.id) toolCalls[idx].id = tc.id;
+                      if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                      if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+                    }
                   }
                 }
               } catch (e) {
@@ -160,67 +197,78 @@ Rules:
         throw new Error(`Request failed: ${err.message}`);
       }
 
+      // Filter out undefined index slots in streamed tool calls
+      toolCalls = toolCalls.filter(Boolean);
+
+      // Append assistant response to cache
+      const assistantMsg = { role: 'assistant' };
+      if (fullReply) assistantMsg.content = fullReply;
+      if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
+      this.chatHistory.push(assistantMsg);
+
       if (logger) {
-        logger.logMessage('assistant', fullReply);
+        logger.logMessage('assistant', fullReply || `[Tool Call: ${JSON.stringify(toolCalls)}]`);
       }
 
-      // Append assistant response
-      this.chatHistory.push({ role: 'assistant', content: fullReply });
+      // 1. Process Native Tool Calls if available
+      if (toolCalls.length > 0) {
+        for (const tc of toolCalls) {
+          let toolResult = '';
+          try {
+            const argsObj = JSON.parse(tc.function.arguments || '{}');
+            const actionName = tc.function.name;
+            let shouldExecute = true;
 
-      // Check if there is an action to perform
-      const actionMatch = fullReply.match(/```json-action\s*([\s\S]*?)\s*```/);
-      if (actionMatch) {
-        let actionResult = '';
-        try {
-          const actionObj = JSON.parse(actionMatch[1]);
-          let shouldExecute = true;
-
-          // Request user confirmation if command execution is requested and not auto-approved
-          if (actionObj.action === 'execute_command') {
-            if (!this.autoApprove) {
-              shouldExecute = await this.askForConfirmation(actionObj.command, readlineInterface);
-            }
-          }
-
-          if (shouldExecute) {
-            if (onStream) {
-              onStream(`\n\x1b[33m⚡ Executing: ${actionObj.action}...\x1b[0m\n`);
-            }
-
-            if (actionObj.action === 'execute_command') {
-              actionResult = await this.runCommand(actionObj.command);
-            } else if (actionObj.action === 'write_file') {
-              await fsPromises.writeFile(actionObj.path, actionObj.content || '', 'utf8');
-              actionResult = `Successfully wrote to file ${actionObj.path}`;
-            } else if (actionObj.action === 'read_file') {
-              actionResult = await fsPromises.readFile(actionObj.path, 'utf8');
+            if (actionName === 'execute_command') {
+              if (!this.autoApprove) {
+                shouldExecute = await this.askForConfirmation(argsObj.command, readlineInterface);
+              }
+              if (shouldExecute) {
+                if (onStream) {
+                  onStream(`\n\x1b[33m⚡ Executing command: ${argsObj.command}...\x1b[0m\n`);
+                }
+                toolResult = await this.runCommand(argsObj.command);
+              } else {
+                toolResult = 'Action execution was denied/cancelled by the user.';
+                if (onStream) {
+                  onStream(`\n\x1b[31mx Execution skipped.\x1b[0m\n`);
+                }
+              }
+            } else if (actionName === 'write_file') {
+              if (onStream) {
+                onStream(`\n\x1b[33m⚡ Writing file: ${argsObj.path}...\x1b[0m\n`);
+              }
+              await fsPromises.writeFile(argsObj.path, argsObj.content || '', 'utf8');
+              toolResult = `Successfully wrote to file ${argsObj.path}`;
+            } else if (actionName === 'read_file') {
+              if (onStream) {
+                onStream(`\n\x1b[33m⚡ Reading file: ${argsObj.path}...\x1b[0m\n`);
+              }
+              toolResult = await fsPromises.readFile(argsObj.path, 'utf8');
             } else {
-              actionResult = `Unknown action: ${actionObj.action}`;
+              toolResult = `Unknown tool: ${actionName}`;
             }
-          } else {
-            actionResult = 'Action execution was denied/cancelled by the user.';
-            if (onStream) {
-              onStream(`\n\x1b[31mx Execution skipped.\x1b[0m\n`);
-            }
+          } catch (err) {
+            toolResult = `Tool execution error: ${err.message}`;
           }
-        } catch (err) {
-          actionResult = `Action execution error: ${err.message}`;
-        }
 
-        if (logger) {
-          logger.logMessage('system-tool-result', actionResult);
-        }
+          if (logger) {
+            logger.logMessage('system-tool-result', toolResult);
+          }
 
-        if (onStream) {
-          onStream(`\n\x1b[32m✔ Result:\n${actionResult.slice(0, 500)}${actionResult.length > 500 ? '... [truncated]' : ''}\x1b[0m\n`);
-        }
+          if (onStream) {
+            onStream(`\n\x1b[32m✔ Result:\n${toolResult.slice(0, 500)}${toolResult.length > 500 ? '... [truncated]' : ''}\x1b[0m\n`);
+          }
 
-        this.chatHistory.push({
-          role: 'user',
-          content: `Action execution outcome:\n${actionResult}`
-        });
-      } else {
-        // No action matches; response has completed naturally
+          this.chatHistory.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: toolResult
+          });
+        }
+      } 
+      // No standard tool calls were requested; response completed naturally
+      else {
         loop = false;
       }
     }
