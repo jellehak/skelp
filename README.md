@@ -91,7 +91,7 @@ By default, `server` is set to `"auto"`. On launch, Skelp probes known local LLM
 1. **LM Studio** — `http://localhost:1234`
 2. **Ollama** — `http://localhost:11434`
 
-The first provider that responds is saved to your config. If none are found, you'll be prompted to enter a server URL manually.
+The first provider that responds is saved to your config along with the first available model. If none are found, you'll be prompted to enter a server URL manually.
 
 To re-trigger auto-detection, set the server back to `"auto"`:
 ```sh

@@ -3,7 +3,7 @@
 import readline from 'node:readline';
 import { parseArgs } from './lib/parseArgs.js';
 import { loadConfig, saveConfig } from './lib/config.js';
-import { detectProvider } from './lib/detect-provider.js';
+import { detectProvider, fetchModels } from './lib/detect-provider.js';
 import { AIClient } from './llm/client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
@@ -66,12 +66,15 @@ async function main() {
     const detected = await detectProvider();
     if (detected) {
       console.log(`\x1b[32m✔ Detected ${detected.name} at ${detected.url}\x1b[0m`);
+      console.log(`\x1b[2m  Using model: ${detected.model}\x1b[0m`);
       config.server = detected.url;
-      saveConfig({ server: detected.url });
+      config.primaryModel = detected.model;
+      saveConfig({ server: detected.url, primaryModel: detected.model });
     } else {
-      const url = await promptForServer();
+      const { url, model } = await promptForServer();
       config.server = url;
-      saveConfig({ server: url });
+      config.primaryModel = model;
+      saveConfig({ server: url, primaryModel: model });
     }
   }
 
@@ -102,10 +105,18 @@ function promptForServer() {
       output: process.stdout
     });
     console.log('\n\x1b[33m⚠ No local LLM provider detected.\x1b[0m');
-    rl.question('Enter server URL (or press Enter for http://localhost:1234): ', (answer) => {
-      rl.close();
+    rl.question('Enter server URL (or press Enter for http://localhost:1234): ', async (answer) => {
       const url = answer.trim() || 'http://localhost:1234';
-      resolve(url);
+      const models = await fetchModels(url);
+      const model = models.length > 0 ? models[0] : 'local-ai-model';
+      if (models.length > 0) {
+        console.log(`\x1b[2m  Using model: ${model}\x1b[0m`);
+      } else {
+        console.log('\x1b[33m⚠ No models found. Using default model name "local-ai-model".\x1b[0m');
+        console.log('\x1b[2m  You can change it later with: /config set primaryModel <name>\x1b[0m');
+      }
+      rl.close();
+      resolve({ url, model });
     });
   });
 }
