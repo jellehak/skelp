@@ -19,6 +19,7 @@ export class AIAgent {
     this.primaryModel = config.primaryModel || this.client.primaryModel;
     this.autoApprove = config.autoApprove || false;
     this.tone = config.tone || 'concise, friendly and helpful';
+    this.userSystem = config.userSystem || '';
     this.cwd = config.cwd || process.cwd();
     this.chatHistory = [];
     this._agent = createAgent({
@@ -37,6 +38,9 @@ export class AIAgent {
     }
     if (config.tone !== undefined) {
       this.tone = config.tone;
+    }
+    if (config.userSystem !== undefined) {
+      this.userSystem = config.userSystem;
     }
     if (config.cwd !== undefined) {
       this.cwd = config.cwd;
@@ -110,7 +114,6 @@ export class AIAgent {
     }
 
     return `You are Skelp, a minimal agentic terminal developer assistant.
-You can execute shell commands, read files, and write files to complete tasks on the current machine.
 Here is some dynamic workspace metadata:
 - Operating System: ${process.platform === 'darwin' ? 'macOS' : process.platform} (${os.release ? os.release() : 'Unknown'})
 - Current Date and Time: ${new Date().toString()}
@@ -118,6 +121,8 @@ Here is some dynamic workspace metadata:
 - Current Config: server="${this.server}", primaryModel="${this.primaryModel}", tone="${this.tone}", autoApprove=${this.autoApprove}
 
 Please present your behavior, response style, and tone exactly matching: "${this.tone}".
+
+${this.userSystem ? `Additional user instructions:\n${this.userSystem}\n` : ''}
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
@@ -183,14 +188,14 @@ Use the provided tools/functions framework. Always state what you are doing befo
         type: 'function',
         function: {
           name: 'update_config',
-          description: 'Updates configuration settings for Skelp (server URL, primaryModel, tone, or autoApprove).',
+          description: 'Updates configuration settings for Skelp (server URL, primaryModel, tone, userSystem, or autoApprove).',
           parameters: {
             type: 'object',
             properties: {
               key: {
                 type: 'string',
-                description: 'The configuration key to update: "server", "primaryModel", "tone", or "autoApprove".',
-                enum: ['server', 'primaryModel', 'tone', 'autoApprove']
+                description: 'The configuration key to update: "server", "primaryModel", "tone", "userSystem", or "autoApprove".',
+                enum: ['server', 'primaryModel', 'tone', 'userSystem', 'autoApprove']
               },
               value: {
                 type: 'string',

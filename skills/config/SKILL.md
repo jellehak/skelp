@@ -11,6 +11,7 @@ You are capable of updating user settings and environment configurations for Ske
 - `server` (string): The OpenAI-compatible API endpoint base URL (e.g., `http://localhost:1234`, `http://localhost:5678`).
 - `primaryModel` (string): The identifier of the model to use (e.g., `llama-3`, `local-ai-model`, `mistral-7b`).
 - `tone` (string): The personality, tone, or style of your responses (e.g., `formal and professional`, `concise, friendly and helpful`, `witty and poetic`).
+- `userSystem` (string): Additional user-provided system instructions that should guide the assistant on every request.
 - `autoApprove` (boolean): Whether commands are executed automatically without user confirmation prompts (`true` or `false`).
 
 ## Tool Usage

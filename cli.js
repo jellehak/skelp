@@ -111,7 +111,7 @@ function printHelp() {
 \x1b[1mConfig Commands:\x1b[0m
   skelp config list           Show all current configurations.
   skelp config get <key>      Get value for a configuration key.
-  skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, autoApprove).
+  skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, userSystem, autoApprove).
 
 \x1b[1mOptions:\x1b[0m
   -s, --server <url>          Override OpenAI-compatible server URL (default: http://localhost:1234).

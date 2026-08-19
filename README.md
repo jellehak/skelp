@@ -9,6 +9,7 @@ Skelp is a minimal, blazing-fast developer shell powered by a locally running or
 - **Streaming Responses**: Delivers instant feedback word-by-word.
 - **Minimalistic UI**: Clean terminal control board with responsive statuses.
 - **Tone Customization**: Personalize the tone of the assistant (e.g. `concise, friendly and helpful`).
+- **System Instructions**: Add persistent user instructions that guide every assistant request.
 - **Session History Logging**: Past interactions are stored beautifully inside timestamped files.
 
 ## Installation
@@ -65,6 +66,7 @@ skelp config list
 skelp config get tone
 skelp config set server http://localhost:5678
 skelp config set tone "formal and professional"
+skelp config set userSystem "Always explain risky changes before applying them."
 skelp config set autoApprove true
 skelp config reset
 ```
@@ -77,6 +79,7 @@ Settings are preserved globally in `~/.skelprc`:
   "server": "http://localhost:1234",
   "primaryModel": "local-ai-model",
   "tone": "concise, friendly and helpful",
+  "userSystem": "",
   "autoApprove": false
 }
 ```
