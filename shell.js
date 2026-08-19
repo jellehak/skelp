@@ -67,15 +67,7 @@ export class SkelpShell {
         ch: ' ',
         inverse: true
       },
-      border: {
-        type: 'line'
-      },
-      style: {
-        border: {
-          fg: 'dim'
-        }
-      },
-      tags: true
+            tags: true
     });
 
     // Static Border Frame for Interactive Textarea
