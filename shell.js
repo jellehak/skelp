@@ -270,7 +270,7 @@ export class SkelpShell {
         if (block.type === 'reasoning') {
           formattedOutput += `\x1b[dim][Thinking: ${block.content}]\x1b[0m\n\n`;
         } else if (block.type === 'text') {
-          formattedOutput += block.content;
+          formattedOutput += formatMarkdown(block.content);
         } else if (block.type === 'function') {
           const rawArgs = block.arguments || '';
           const bytes = Buffer.byteLength(rawArgs, 'utf8');
