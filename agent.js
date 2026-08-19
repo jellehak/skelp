@@ -2,9 +2,8 @@ import childProcess from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { promises as fsPromises } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { OpenAIClient } from './client.js';
+import { OpenAIClient } from './llm/client.js';
 import { saveConfig } from './lib/config.js';
 import registerFsTools from './skills/filesystem/tools.js';
 
