@@ -3,14 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline';
 import { OpenAIClient } from './llm/client.js';
+import { createAgent } from './llm/agent.js';
 import { saveConfig } from './lib/config.js';
 import registerFsTools from './skills/filesystem/tools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const fileLog = fs.createWriteStream(path.join(os.homedir(), '.skelp', 'logs', `skelp_request_${Date.now()}.log`), { flags: 'a' });
 
 export class AIAgent {
   constructor(config = {}) {
@@ -21,6 +21,11 @@ export class AIAgent {
     this.tone = config.tone || 'concise, friendly and helpful';
     this.cwd = config.cwd || process.cwd();
     this.chatHistory = [];
+    this._agent = createAgent({
+      client: this.client,
+      chatHistory: this.chatHistory,
+      systemPrompt: this.buildSystemPrompt()
+    });
   }
 
   updateConfig(config = {}) {
@@ -222,123 +227,13 @@ Use the provided tools/functions framework. Always state what you are doing befo
    * Main agent loop executing goals with streaming and tool invocations.
    */
   async executeGoal(prompt, onStream, readlineInterface = null, logger = null) {
-    if (logger) {
-      logger.logMessage('user', prompt);
-    }
-
-    if (this.chatHistory.length === 0) {
-      this.chatHistory.push({
-        role: 'system',
-        content: this.buildSystemPrompt()
-      });
-    }
-
-    this.chatHistory.push({ role: 'user', content: prompt });
-
+    this._agent.setSystemPrompt(this.buildSystemPrompt());
     const tools = this.buildTools(onStream, readlineInterface);
-    const toolSchemas = tools.map(({ handler, onChunk, ...schema }) => schema);
-    const toolHandlers = new Map(tools.map((t) => [t.function.name, t.handler]));
-    const toolChunkHandlers = new Map(tools.filter((t) => typeof t.onChunk === 'function').map((t) => [t.function.name, t.onChunk]));
-
-    let loop = true;
-    let maxSteps = 5;
-
-    while (loop && maxSteps > 0) {
-      maxSteps--;
-      let response;
-
-      const activeToolCalls = {};
-
-      try {
-        response = await this.client.chatCompletionStream({
-          messages: this.chatHistory,
-          tools: toolSchemas,
-          toolChoice: 'auto',
-          onChunk: (delta) => {
-            // fileLog.write(JSON.stringify(delta, null, 2) + '\n');
-            fileLog.write(JSON.stringify({ timestamp: new Date().toISOString(), delta }, null, 2) + '\n');
-
-            if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                if (!activeToolCalls[idx]) {
-                  activeToolCalls[idx] = { id: tc.id || '', name: tc.function?.name || '', arguments: '' };
-                }
-                if (tc.id) activeToolCalls[idx].id = tc.id;
-                if (tc.function?.name) activeToolCalls[idx].name = tc.function.name;
-                if (tc.function?.arguments) activeToolCalls[idx].arguments += tc.function.arguments;
-
-                const currentTool = activeToolCalls[idx];
-                const chunkHandler = toolChunkHandlers.get(currentTool.name);
-                if (chunkHandler) {
-                  chunkHandler({
-                    delta,
-                    toolCall: tc,
-                    accumulatedArgs: currentTool.arguments,
-                    name: currentTool.name
-                  });
-                } else if (currentTool.name && readlineInterface && typeof readlineInterface.updateStatus === 'function') {
-                  readlineInterface.updateStatus(`Tool: ${currentTool.name}...`);
-                }
-              }
-            }
-
-            if (onStream) {
-              onStream(delta);
-            }
-          }
-        });
-      } catch (err) {
-        throw new Error(`Request failed: ${err.message}`);
-      }
-
-      const { content: fullReply, toolCalls } = response;
-
-      // Append assistant response to cache
-      const assistantMsg = { role: 'assistant' };
-      if (fullReply) assistantMsg.content = fullReply;
-      if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
-      this.chatHistory.push(assistantMsg);
-
-      if (logger) {
-        logger.logMessage('assistant', fullReply || `[Tool Call: ${JSON.stringify(toolCalls)}]`);
-      }
-
-      // Process Native Tool Calls via registered callbacks
-      if (toolCalls.length > 0) {
-        for (const tc of toolCalls) {
-          let toolResult = '';
-          const actionName = tc.function.name;
-          try {
-            const argsObj = JSON.parse(tc.function.arguments || '{}');
-            const handler = toolHandlers.get(actionName);
-            if (handler) {
-              toolResult = await handler(argsObj);
-            } else {
-              toolResult = `Unknown tool: ${actionName}`;
-            }
-          } catch (err) {
-            toolResult = `Tool execution error: ${err.message}`;
-          }
-
-          if (logger) {
-            logger.logMessage('system-tool-result', toolResult);
-          }
-
-          if (onStream) {
-            onStream(`\n\x1b[32m✔ Result:\n${toolResult.slice(0, 500)}${toolResult.length > 500 ? '... [truncated]' : ''}\x1b[0m\n`);
-          }
-
-          this.chatHistory.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: toolResult
-          });
-        }
-      } else {
-        loop = false;
-      }
-    }
+    await this._agent.executeGoal(prompt, onStream, {
+      tools,
+      readlineInterface,
+      logger
+    });
   }
 
   /**

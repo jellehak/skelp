@@ -2,7 +2,7 @@
 
 import { parseArgs } from './lib/parseArgs.js';
 import { loadConfig } from './lib/config.js';
-import { AIClient } from './client.js';
+import { AIClient } from './llm/client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
 
