@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
+import readline from 'node:readline';
 import { parseArgs } from './lib/parseArgs.js';
-import { loadConfig } from './lib/config.js';
+import { loadConfig, saveConfig } from './lib/config.js';
+import { detectProvider } from './lib/detect-provider.js';
 import { AIClient } from './llm/client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
@@ -58,6 +60,21 @@ async function main() {
   // Bind auto-approve preference
   config.autoApprove = Boolean(args.yes);
 
+  // Auto-detect provider if server is set to 'auto'
+  if (config.server === 'auto') {
+    console.log('\x1b[2mDetecting local LLM provider...\x1b[0m');
+    const detected = await detectProvider();
+    if (detected) {
+      console.log(`\x1b[32m✔ Detected ${detected.name} at ${detected.url}\x1b[0m`);
+      config.server = detected.url;
+      saveConfig({ server: detected.url });
+    } else {
+      const url = await promptForServer();
+      config.server = url;
+      saveConfig({ server: url });
+    }
+  }
+
   const client = new AIClient(config);
 
   // If we have positional arguments (e.g. skelp "Write a summary..."), run as one-off task
@@ -76,6 +93,21 @@ async function main() {
     const shellInstance = new SkelpShell(client);
     shellInstance.start();
   }
+}
+
+function promptForServer() {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    console.log('\n\x1b[33m⚠ No local LLM provider detected.\x1b[0m');
+    rl.question('Enter server URL (or press Enter for http://localhost:1234): ', (answer) => {
+      rl.close();
+      const url = answer.trim() || 'http://localhost:1234';
+      resolve(url);
+    });
+  });
 }
 
 function stripBlessedTags(str) {
@@ -111,10 +143,10 @@ function printHelp() {
 \x1b[1mConfig Commands:\x1b[0m
   skelp config list           Show all current configurations.
   skelp config get <key>      Get value for a configuration key.
-  skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, userSystem, autoApprove).
+  skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, userSystem, autoApprove). Use server="auto" to re-trigger provider detection.
 
 \x1b[1mOptions:\x1b[0m
-  -s, --server <url>          Override OpenAI-compatible server URL (default: http://localhost:1234).
+  -s, --server <url>          Override OpenAI-compatible server URL (default: auto-detect). Use "auto" to re-trigger detection.
   -m, --model <name>          Override primary model name (default: local-ai-model).
   -y, --yes                   Automatically approve all workspace/shell commands without prompting.
   -h, --help                  Show help.

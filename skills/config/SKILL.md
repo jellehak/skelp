@@ -8,7 +8,7 @@ description: Instructions and tool definitions for managing and updating Skelp c
 You are capable of updating user settings and environment configurations for Skelp dynamically via function/tool calls or CLI commands.
 
 ## Supported Configuration Keys:
-- `server` (string): The OpenAI-compatible API endpoint base URL (e.g., `http://localhost:1234`, `http://localhost:5678`).
+- `server` (string): The OpenAI-compatible API endpoint base URL (e.g., `http://localhost:1234`, `http://localhost:5678`). Use `"auto"` to re-trigger provider detection on next launch.
 - `primaryModel` (string): The identifier of the model to use (e.g., `llama-3`, `local-ai-model`, `mistral-7b`).
 - `tone` (string): The personality, tone, or style of your responses (e.g., `formal and professional`, `concise, friendly and helpful`, `witty and poetic`).
 - `userSystem` (string): Additional user-provided system instructions that should guide the assistant on every request.
