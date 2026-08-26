@@ -64,7 +64,8 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     session.messages = messages.map((message) => ({
       role: message.role,
       content: message.content || '',
-      toolEvents: message.toolEvents || []
+      toolEvents: message.toolEvents || [],
+      error: message.error || null
     }));
 
     const firstUserMessage = session.messages.find((message) => message.role === 'user' && message.content);

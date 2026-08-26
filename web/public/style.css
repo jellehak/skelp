@@ -702,6 +702,11 @@ body { background-image: linear-gradient(rgba(38, 48, 47, .16) 1px, transparent 
 .tool-call { border-color: #4d3a2a; background: rgba(37, 27, 20, .7); }
 .tool-call .tool-name { color: #e9a36e; }
 .tool-result { border-color: #29433e; background: rgba(20, 34, 31, .5); }
+.error-message { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(220, 128, 103, .48); border-left: 2px solid #dc8067; border-radius: 5px; background: rgba(220, 128, 103, .08); color: #e6b0a0; font: 11px/1.5 var(--mono); }
+.error-marker { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; border: 1px solid #dc8067; border-radius: 50%; color: #dc8067; font: 11px var(--font); font-weight: 700; }
+.error-message div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.error-message strong { color: #f0c1b2; font-weight: 500; }
+.error-message span:last-child { overflow-wrap: anywhere; color: #c99587; }
 .typing { align-items: center; gap: 3px; min-height: 28px; padding: 4px 10px; border: 1px solid #29433e; border-radius: 4px; background: rgba(20, 34, 31, .48); color: var(--accent); }
 .message-content > .typing { margin-top: 0; border: 0; background: transparent; }
 .typing::before { content: 'THINKING'; margin-right: 7px; color: #84908b; font: 9px var(--mono); letter-spacing: .1em; }

@@ -57,6 +57,13 @@ createApp({
           </div>
           <div class="message-content">
             <div v-html="renderMd(msg.content)"></div>
+            <div v-if="msg.error" class="error-message" role="alert">
+              <span class="error-marker">!</span>
+              <div>
+                <strong>{{ msg.error.title }}</strong>
+                <span>{{ msg.error.detail }}</span>
+              </div>
+            </div>
             <div v-if="msg.role === 'assistant' && streaming && i === messages.length - 1 && !msg.content" class="typing">
               <span></span><span></span><span></span>
             </div>
@@ -308,7 +315,7 @@ createApp({
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
-          assistantMsg.content += '\n\n**Error:** ' + err.message;
+          assistantMsg.error = { title: 'Request failed', detail: err.message };
         }
       }
 
@@ -346,7 +353,7 @@ createApp({
           scrollToBottom();
           break;
         case 'error':
-          msg.content += '\n\n**Error:** ' + (data.message || 'Unknown error');
+          msg.error = { title: 'Agent error', detail: data.message || 'Unknown error' };
           scrollToBottom();
           break;
         case 'done':
