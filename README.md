@@ -31,8 +31,8 @@ Build and run the web interface in a container:
 
 ```sh
 # git clone https://github.com/jellehak/skelp && cd skelp
-docker build -t skelp-web .
-docker run --rm -p 8181:8181 skelp-web
+docker build -t skelp .
+docker run --rm -p 8181:8181 skelp
 ```
 
 Open [http://localhost:8181](http://localhost:8181) in your browser. For persistent configuration, local filesystem mapping, and LLM connection details, see [docs/docker.md](docs/docker.md).
