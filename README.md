@@ -30,6 +30,7 @@ npm i -g https://github.com/jellehak/skelp
 Build and run the web interface in a container:
 
 ```sh
+# git clone https://github.com/jellehak/skelp && cd skelp
 docker build -t skelp-web .
 docker run --rm -p 8181:8181 skelp-web
 ```

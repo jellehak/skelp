@@ -2,7 +2,6 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OpenAIClient } from '../llm/client.js';
 import { AIAgent } from '../agent.js';
 import { loadConfig, saveConfig } from '../lib/config.js';
 import { detectProvider } from '../lib/detect-provider.js';

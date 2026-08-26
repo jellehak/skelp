@@ -22,6 +22,9 @@ export class AIAgent {
     this.userSystem = config.userSystem || '';
     this.cwd = config.cwd || process.cwd();
     this.chatHistory = config.chatHistory || [];
+    if (this.chatHistory.length > 0 && this.chatHistory[0].role !== 'system') {
+      this.chatHistory.unshift({ role: 'system', content: this.buildSystemPrompt() });
+    }
     this._agent = createAgent({
       client: this.client,
       chatHistory: this.chatHistory,
