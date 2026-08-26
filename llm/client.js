@@ -38,7 +38,7 @@ export class OpenAIClient {
    * Calls onChunk with the raw delta object (containing content, reasoning_content, tool_calls, etc.).
    * Returns { content: string, toolCalls: Array }.
    */
-  async chatCompletionStream({ messages, tools, toolChoice = 'auto', onChunk }) {
+  async chatCompletionStream({ messages, tools, toolChoice = 'auto', onChunk, signal }) {
     const url = `${this.server.replace(/\/+$/, '')}/v1/chat/completions`;
     const payload = {
       model: this.primaryModel,
@@ -54,7 +54,8 @@ export class OpenAIClient {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
 
     if (!response.ok) {

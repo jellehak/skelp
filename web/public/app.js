@@ -1,8 +1,8 @@
 import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { marked } from 'marked';
+import { useSessions } from './compositions/sessions.js';
 
 const BOT_NAME = 'Skelp';
-const STORAGE_KEY = 'skelp.chat-sessions';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -12,29 +12,6 @@ createApp({
       <div class="header-left">
         <img src="/logo.svg" alt="Skelp">
         <h1>Skelp</h1>
-        <div class="session-control">
-          <button class="session-trigger" @click="showSessions = !showSessions" :aria-expanded="showSessions" title="Switch chat">
-            <span class="session-trigger-label">{{ activeSessionTitle }}</span>
-            <span class="session-trigger-chevron">&#9662;</span>
-          </button>
-          <div v-if="showSessions" class="session-menu">
-            <div class="session-menu-header">
-              <span>CHAT SESSIONS</span>
-              <button class="session-new" @click="newChat" title="New chat">+</button>
-            </div>
-            <button
-              v-for="session in sessions"
-              :key="session.id"
-              class="session-item"
-              :class="{ active: session.id === activeSessionId }"
-              @click="selectSession(session.id)"
-            >
-              <span class="session-item-title">{{ session.title }}</span>
-              <span class="session-item-meta">{{ session.messages.length }} msg</span>
-              <span class="session-item-delete" @click.stop="deleteSession(session.id)" title="Delete chat">&times;</span>
-            </button>
-          </div>
-        </div>
       </div>
       <div class="header-right">
         <span class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
@@ -42,6 +19,23 @@ createApp({
         <button class="btn-icon" @click="showSettings = true" title="Settings">&#9881;</button>
       </div>
     </div>
+
+    <nav v-if="sessions.length" class="session-rail" aria-label="Chat sessions">
+      <div class="session-rail-inner">
+        <button
+          v-for="session in sessions"
+          :key="session.id"
+          class="session-tab"
+          :class="{ active: session.id === activeSessionId }"
+          @click="switchSession(session.id)"
+          :title="session.title"
+        >
+          <span class="session-tab-title">{{ session.title }}</span>
+          <time>{{ formatSessionDate(session.updatedAt) }}</time>
+        </button>
+        <button class="rail-new" @click="clearChat" title="New chat">+</button>
+      </div>
+    </nav>
 
     <div class="chat" ref="chatRef">
       <div v-if="messages.length === 0" class="welcome">
@@ -129,15 +123,13 @@ createApp({
         </div>
       </div>
     </div>
+
   `,
 
   setup() {
     const messages = reactive([]);
-    const sessions = reactive([]);
-    const activeSessionId = ref(null);
     const input = ref('');
     const showSettings = ref(false);
-    const showSessions = ref(false);
     const streaming = ref(false);
     const connectionStatus = ref('connecting');
     const models = ref([]);
@@ -145,10 +137,16 @@ createApp({
     const inputRef = ref(null);
     const activeRequest = ref(null);
 
-    const activeSessionTitle = computed(() => {
-      const activeSession = sessions.find((session) => session.id === activeSessionId.value);
-      return activeSession?.title || 'New chat';
-    });
+    const {
+      sessions,
+      activeSessionId,
+      persistActiveSession,
+      restoreSessions,
+      switchSession,
+      deleteSession,
+      startNewSession,
+      formatSessionDate
+    } = useSessions({ messages, streaming, activeRequest, inputRef, nextTick, scrollToBottom });
 
     const config = reactive({
       server: '',
@@ -188,126 +186,6 @@ createApp({
       const el = e.target;
       el.style.height = 'auto';
       el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-    }
-
-    function createSession() {
-      const now = Date.now();
-      return {
-        id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
-        title: 'New chat',
-        messages: [],
-        createdAt: now,
-        updatedAt: now
-      };
-    }
-
-    function saveSessions() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          activeSessionId: activeSessionId.value,
-          sessions: sessions.map((session) => ({
-            ...session,
-            messages: session.messages.map(({ role, content, toolEvents }) => ({ role, content, toolEvents }))
-          }))
-        }));
-      } catch (err) {
-        console.warn('Failed to save chat sessions:', err);
-      }
-    }
-
-    function persistActiveSession(sessionId = activeSessionId.value) {
-      if (sessionId !== activeSessionId.value) return;
-      const session = sessions.find((item) => item.id === sessionId);
-      if (!session) return;
-
-      const firstUserMessage = messages.find((message) => message.role === 'user' && message.content);
-      if (firstUserMessage && session.title === 'New chat') {
-        session.title = truncate(firstUserMessage.content.replace(/\s+/g, ' '), 36);
-      }
-      session.messages = messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-        toolEvents: message.toolEvents || []
-      }));
-      session.updatedAt = Date.now();
-      saveSessions();
-    }
-
-    function restoreSessions() {
-      let stored;
-      try {
-        stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      } catch {
-        stored = null;
-      }
-
-      const storedSessions = Array.isArray(stored?.sessions)
-        ? stored.sessions.filter((session) => session && session.id && Array.isArray(session.messages))
-        : [];
-      sessions.push(...storedSessions.map((session) => ({
-        id: String(session.id),
-        title: session.title || 'New chat',
-        messages: session.messages.filter((message) => message && (message.role === 'user' || message.role === 'assistant')).map((message) => ({
-          role: message.role,
-          content: typeof message.content === 'string' ? message.content : '',
-          toolEvents: Array.isArray(message.toolEvents) ? message.toolEvents : []
-        })),
-        createdAt: Number(session.createdAt) || Date.now(),
-        updatedAt: Number(session.updatedAt) || Date.now()
-      })));
-
-      if (!sessions.length) sessions.push(createSession());
-      const storedActiveId = stored?.activeSessionId;
-      const activeSession = sessions.find((session) => session.id === storedActiveId) || sessions[0];
-      activeSessionId.value = activeSession.id;
-      messages.push(...activeSession.messages.map((message) => reactive({ ...message })));
-      saveSessions();
-    }
-
-    function newChat() {
-      activeRequest.value?.abort();
-      streaming.value = false;
-      persistActiveSession();
-      const session = createSession();
-      sessions.unshift(session);
-      activeSessionId.value = session.id;
-      messages.splice(0, messages.length);
-      showSessions.value = false;
-      saveSessions();
-      nextTick(() => inputRef.value?.focus());
-    }
-
-    function selectSession(sessionId) {
-      if (sessionId === activeSessionId.value) {
-        showSessions.value = false;
-        return;
-      }
-      activeRequest.value?.abort();
-      streaming.value = false;
-      persistActiveSession();
-      const session = sessions.find((item) => item.id === sessionId);
-      if (!session) return;
-      activeSessionId.value = session.id;
-      messages.splice(0, messages.length, ...session.messages.map((message) => reactive({ ...message })));
-      showSessions.value = false;
-      saveSessions();
-      nextTick(() => {
-        scrollToBottom();
-        inputRef.value?.focus();
-      });
-    }
-
-    function deleteSession(sessionId) {
-      const index = sessions.findIndex((session) => session.id === sessionId);
-      if (index === -1) return;
-      sessions.splice(index, 1);
-      if (sessionId === activeSessionId.value) {
-        const nextSession = sessions[index] || sessions[index - 1] || createSession();
-        if (!sessions.includes(nextSession)) sessions.push(nextSession);
-        activeSessionId.value = nextSession.id;
-        messages.splice(0, messages.length, ...nextSession.messages.map((message) => reactive({ ...message })));
-      }
-      saveSessions();
     }
 
     async function loadConfig() {
@@ -355,7 +233,7 @@ createApp({
     }
 
     function clearChat() {
-      newChat();
+      startNewSession();
     }
 
     async function send() {
@@ -365,19 +243,18 @@ createApp({
       activeRequest.value?.abort();
       const requestController = new AbortController();
       activeRequest.value = requestController;
-      const requestSessionId = activeSessionId.value;
 
       messages.push({ role: 'user', content: text });
       input.value = '';
       streaming.value = true;
-      persistActiveSession(requestSessionId);
+      persistActiveSession();
 
       await nextTick();
       scrollToBottom();
 
       const assistantMsg = reactive({ role: 'assistant', content: '', toolEvents: [] });
       messages.push(assistantMsg);
-      persistActiveSession(requestSessionId);
+      const sessionId = activeSessionId.value;
 
       try {
         const payload = messages
@@ -390,13 +267,6 @@ createApp({
           body: JSON.stringify({ messages: payload }),
           signal: requestController.signal
         });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with HTTP ${response.status}`);
-        }
-        if (!response.body) {
-          throw new Error('The server returned an empty response stream');
-        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -429,25 +299,16 @@ createApp({
             if (dataLines.length > 0) {
               try {
                 const data = JSON.parse(dataLines.join('\n'));
-                handleEvent(evType || eventType, data, assistantMsg, requestSessionId);
-                if (evType === 'done' || evType === 'error') {
-                  await reader.cancel();
-                  buffer = '';
-                  break;
-                }
+                handleEvent(evType || eventType, data, assistantMsg);
+                if (activeSessionId.value === sessionId) persistActiveSession();
                 if (evType) eventType = evType;
               } catch {}
             }
-
-            if (eventType === 'done' || eventType === 'error') break;
           }
-
-          if (eventType === 'done' || eventType === 'error') break;
         }
       } catch (err) {
         if (err.name !== 'AbortError') {
           assistantMsg.content += '\n\n**Error:** ' + err.message;
-          persistActiveSession(requestSessionId);
         }
       }
 
@@ -455,16 +316,16 @@ createApp({
 
       activeRequest.value = null;
       streaming.value = false;
+      persistActiveSession();
       scrollToBottom();
       await nextTick();
       inputRef.value?.focus();
     }
 
-    function handleEvent(type, data, msg, sessionId) {
+    function handleEvent(type, data, msg) {
       switch (type) {
         case 'text':
           if (data.content) msg.content += data.content;
-          persistActiveSession(sessionId);
           scrollToBottom();
           break;
         case 'tool_call':
@@ -474,7 +335,6 @@ createApp({
             name: data.name || '',
             argsStr: data.args || ''
           });
-          persistActiveSession(sessionId);
           scrollToBottom();
           break;
         case 'tool_result':
@@ -483,12 +343,10 @@ createApp({
             name: data.name || '',
             result: data.result || ''
           });
-          persistActiveSession(sessionId);
           scrollToBottom();
           break;
         case 'error':
           msg.content += '\n\n**Error:** ' + (data.message || 'Unknown error');
-          persistActiveSession(sessionId);
           scrollToBottom();
           break;
         case 'done':
@@ -497,9 +355,9 @@ createApp({
     }
 
     onMounted(async () => {
+      restoreSessions();
       await loadConfig();
       await loadModels();
-      restoreSessions();
       inputRef.value?.focus();
     });
 
@@ -507,8 +365,6 @@ createApp({
       BOT_NAME,
       sessions,
       activeSessionId,
-      activeSessionTitle,
-      showSessions,
       messages,
       input,
       showSettings,
@@ -523,9 +379,9 @@ createApp({
       truncate,
       send,
       clearChat,
-      newChat,
-      selectSession,
+      switchSession,
       deleteSession,
+      formatSessionDate,
       saveSettings,
       autoResize
     };

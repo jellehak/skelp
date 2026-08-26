@@ -21,7 +21,7 @@ export class AIAgent {
     this.tone = config.tone || 'concise, friendly and helpful';
     this.userSystem = config.userSystem || '';
     this.cwd = config.cwd || process.cwd();
-    this.chatHistory = [];
+    this.chatHistory = config.chatHistory || [];
     this._agent = createAgent({
       client: this.client,
       chatHistory: this.chatHistory,
@@ -126,7 +126,7 @@ ${this.userSystem ? `Additional user instructions:\n${this.userSystem}\n` : ''}
 
 If the user's intent is simply to converse, reply with helpful natural language.
 If you need to query information or perform action steps:
-Use the provided tools/functions framework. Always state what you are doing before executing an action. Only run one action at a time. Wait for the user to provide the execution outcome.${skillPrompts}`;
+Use the provided tools/functions framework. State the intended action briefly, then call the tool directly. Never ask the user to approve a command in your response: Skelp presents the single authorization prompt when needed. Only run one action at a time. Wait for the user to provide the execution outcome.${skillPrompts}`;
   }
 
   /**
@@ -231,13 +231,16 @@ Use the provided tools/functions framework. Always state what you are doing befo
   /**
    * Main agent loop executing goals with streaming and tool invocations.
    */
-  async executeGoal(prompt, onStream, readlineInterface = null, logger = null) {
+  async executeGoal(prompt, onStream, readlineInterface = null, logger = null, signal = null, callbacks = {}) {
     this._agent.setSystemPrompt(this.buildSystemPrompt());
     const tools = this.buildTools(onStream, readlineInterface);
     await this._agent.executeGoal(prompt, onStream, {
       tools,
       readlineInterface,
-      logger
+      logger,
+      signal,
+      onToolCall: callbacks.onToolCall,
+      onToolResult: callbacks.onToolResult
     });
   }
 

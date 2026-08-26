@@ -618,6 +618,26 @@ html, body {
   }
 }
 
+/* Local session navigation */
+.rail-new { width: 31px; justify-content: center; color: var(--accent); font-size: 17px; }
+.session-rail { flex-shrink: 0; padding: 7px 20px 0; border-bottom: 1px solid var(--border); background: rgba(11, 13, 14, .9); }
+.session-rail-inner { display: flex; gap: 5px; max-width: 860px; margin: 0 auto; overflow-x: auto; padding-bottom: 7px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.session-rail-inner::-webkit-scrollbar { height: 4px; }
+.session-rail-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.session-tab, .rail-new { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 31px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text-muted); cursor: pointer; font: 11px var(--mono); transition: .15s ease; }
+.session-tab { gap: 10px; max-width: 230px; padding: 0 10px; }
+.session-tab:hover, .session-tab:focus-visible, .rail-new:hover, .rail-new:focus-visible { border-color: var(--line-strong); background: var(--surface); color: var(--text); outline: none; }
+.session-tab.active { border-color: var(--accent-dim); background: rgba(20, 34, 31, .72); color: var(--accent); }
+.session-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-tab time { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.session-tab.active time { color: var(--mint-dim); }
+.rail-new { width: 31px; justify-content: center; color: var(--accent); font-size: 17px; }
+
+@media (max-width: 640px) {
+  .session-rail { padding: 7px 13px 0; }
+  .session-tab { max-width: 190px; }
+}
+
 /* Technical workspace theme */
 :root {
   --bg: #0b0d0e;

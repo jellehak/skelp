@@ -25,6 +25,17 @@ npm link
 npm i -g https://github.com/jellehak/skelp
 ```
 
+## Docker Web Interface
+
+Build and run the web interface in a container:
+
+```sh
+docker build -t skelp-web .
+docker run --rm -p 8181:8181 skelp-web
+```
+
+Open [http://localhost:8181](http://localhost:8181) in your browser. For persistent configuration, local filesystem mapping, and LLM connection details, see [docs/docker.md](docs/docker.md).
+
 ## Usage
 
 ### Interactive Shell

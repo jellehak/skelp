@@ -61,12 +61,13 @@ export function createAgent(options = {}) {
      *
      * @param {string} prompt - User message.
      * @param {Function} [onStream] - Stream callback receiving delta chunks or string outputs.
-     * @param {Object} [execOptions] - Execution overrides (e.g. logger, readlineInterface, maxSteps, tools).
+    * @param {Object} [execOptions] - Execution overrides (e.g. logger, readlineInterface, maxSteps, tools, signal).
      */
     async executeGoal(prompt, onStream, execOptions = {}) {
       const execLogger = execOptions.logger || logger;
       const execMaxSteps = execOptions.maxSteps ?? maxSteps;
       const execTools = execOptions.tools || tools;
+      const execOnToolCall = execOptions.onToolCall || null;
       const statusCallback = execOptions.onStatus || onStatus || (execOptions.readlineInterface?.updateStatus ? (msg) => execOptions.readlineInterface.updateStatus(msg) : null);
 
       if (execLogger) {
@@ -101,6 +102,7 @@ export function createAgent(options = {}) {
             messages: chatHistory,
             tools: toolSchemas.length > 0 ? toolSchemas : undefined,
             toolChoice: toolSchemas.length > 0 ? 'auto' : undefined,
+            signal: execOptions.signal,
             onChunk: (delta) => {
               fileLog.write(
                 JSON.stringify({ timestamp: new Date().toISOString(), delta }, null, 2) + '\n'
@@ -161,6 +163,9 @@ export function createAgent(options = {}) {
 
             try {
               argsObj = JSON.parse(tc.function.arguments || '{}');
+              if (execOnToolCall) {
+                execOnToolCall({ name: actionName, args: argsObj, id: tc.id });
+              }
               const handler = toolHandlers.get(actionName);
               if (handler) {
                 toolResult = await handler(argsObj);

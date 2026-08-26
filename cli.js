@@ -7,7 +7,7 @@ import { detectProvider, fetchModels } from './lib/detect-provider.js';
 import { AIClient } from './llm/client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
-import { PlainCli, stripBlessedTags } from './lib/plain-cli.js';
+import { createPlainCli, stripBlessedTags } from './lib/plain-cli.js';
 
 async function main() {
   const definitions = {
@@ -92,7 +92,7 @@ async function main() {
   const client = new AIClient(config);
 
   if (args.cli) {
-    const plainCli = new PlainCli(client);
+    const plainCli = createPlainCli(client);
     if (positionalArgs.length > 0) {
       try {
         await plainCli.runOnce(positionalArgs.join(' '));
