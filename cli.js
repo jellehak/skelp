@@ -7,13 +7,15 @@ import { detectProvider, fetchModels } from './lib/detect-provider.js';
 import { AIClient } from './llm/client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
+import { PlainCli, stripBlessedTags } from './lib/plain-cli.js';
 
 async function main() {
   const definitions = {
     server: { type: 'string', alias: 's' },
     model: { type: 'string', alias: 'm' },
     help: { type: 'boolean', alias: 'h' },
-    yes: { type: 'boolean', alias: 'y' }
+    yes: { type: 'boolean', alias: 'y' },
+    cli: { type: 'boolean' }
   };
 
   let args;
@@ -89,6 +91,21 @@ async function main() {
 
   const client = new AIClient(config);
 
+  if (args.cli) {
+    const plainCli = new PlainCli(client);
+    if (positionalArgs.length > 0) {
+      try {
+        await plainCli.runOnce(positionalArgs.join(' '));
+        process.exit(0);
+      } catch (err) {
+        console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
+        process.exit(1);
+      }
+    }
+    plainCli.start();
+    return;
+  }
+
   // If we have positional arguments (e.g. skelp "Write a summary..."), run as one-off task
   if (positionalArgs.length > 0) {
     const prompt = positionalArgs.join(' ');
@@ -130,34 +147,15 @@ function promptForServer() {
   });
 }
 
-function stripBlessedTags(str) {
-  return str
-    .replace(/\{bold\}/g, '\x1b[1m')
-    .replace(/\{\/bold\}/g, '\x1b[22m')
-    .replace(/\{dim\}/g, '\x1b[2m')
-    .replace(/\{\/dim\}/g, '\x1b[22m')
-    .replace(/\{cyan-fg\}/g, '\x1b[36m')
-    .replace(/\{\/cyan-fg\}/g, '\x1b[39m')
-    .replace(/\{green-fg\}/g, '\x1b[32m')
-    .replace(/\{\/green-fg\}/g, '\x1b[39m')
-    .replace(/\{yellow-fg\}/g, '\x1b[33m')
-    .replace(/\{\/yellow-fg\}/g, '\x1b[39m')
-    .replace(/\{red-fg\}/g, '\x1b[31m')
-    .replace(/\{\/red-fg\}/g, '\x1b[39m')
-    .replace(/\{blue-fg\}/g, '\x1b[34m')
-    .replace(/\{\/blue-fg\}/g, '\x1b[39m')
-    .replace(/\{magenta-fg\}/g, '\x1b[35m')
-    .replace(/\{\/magenta-fg\}/g, '\x1b[39m')
-    .replace(/\{[a-z0-9#-]+-fg\}|\{\/[a-z0-9#-]+-fg\}/gi, '');
-}
-
 function printHelp() {
   console.log(`
 \x1b[1mSkelp\x1b[0m — A minimal shell powered by local running assistant.
 
 \x1b[1mUsage:\x1b[0m
   skelp                       Start interactive natural-language shells.
+  skelp --cli                 Start the line-based CLI shell.
   skelp [task/command]        Run a one-off natural-language prompt or action direct.
+  skelp --cli [task/command]  Run a one-off prompt without the TUI.
   skelp web [port]            Start the web interface (default port: 3000).
   skelp config <get|set|list> Manage configuration settings.
 
