@@ -1,0 +1,16 @@
+{
+  "name": "Skelp",
+  "short_name": "Skelp",
+  "description": "A minimal shell powered by local AI models",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#e94560",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

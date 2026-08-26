@@ -42,9 +42,18 @@ async function main() {
     process.exit(0);
   }
 
-  // Handle CLI config or built-in subcommands (e.g. skelp config get, skelp models, skelp help)
-  const isCommand = positionalArgs.length > 0 && ['config', 'models', 'help'].includes(positionalArgs[0].toLowerCase());
+  // Handle CLI config or built-in subcommands (e.g. skelp config get, skelp models, skelp help, skelp web)
+  const isCommand = positionalArgs.length > 0 && ['config', 'models', 'help', 'web'].includes(positionalArgs[0].toLowerCase());
   if (isCommand) {
+    const subCmd = positionalArgs[0].toLowerCase();
+
+    if (subCmd === 'web') {
+      const port = positionalArgs[1] ? parseInt(positionalArgs[1], 10) : 3000;
+      const { start } = await import('./web/server.js');
+      start(port);
+      return;
+    }
+
     const cmdStr = positionalArgs.join(' ');
     const handled = await executeCommand(cmdStr, {
       client: new AIClient(loadConfig()),
@@ -149,6 +158,7 @@ function printHelp() {
 \x1b[1mUsage:\x1b[0m
   skelp                       Start interactive natural-language shells.
   skelp [task/command]        Run a one-off natural-language prompt or action direct.
+  skelp web [port]            Start the web interface (default port: 3000).
   skelp config <get|set|list> Manage configuration settings.
 
 \x1b[1mConfig Commands:\x1b[0m
