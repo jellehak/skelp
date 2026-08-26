@@ -45,6 +45,12 @@ Launch the interactive shell simply by running:
 skelp
 ```
 
+This starts the line-based CLI. To use the terminal UI instead, run:
+
+```sh
+skelp tui
+```
+
 ### Slash Commands (Inside Shell)
 You can type convenient slash commands directly into the prompt:
 - `/help` — Display list of commands.

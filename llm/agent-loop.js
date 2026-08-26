@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { OpenAIClient } from './client.js';
+import { OpenAIClient } from './openai-client.js';
 
 const fileLog = fs.createWriteStream(
   path.join(os.homedir(), '.skelp', 'logs', `skelp_request_${Date.now()}.log`),

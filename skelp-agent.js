@@ -4,8 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
-import { OpenAIClient } from './llm/client.js';
-import { createAgent } from './llm/agent.js';
+import { OpenAIClient } from './llm/openai-client.js';
+import { createAgent } from './llm/agent-loop.js';
 import { saveConfig } from './lib/config.js';
 import registerFsTools from './skills/filesystem/tools.js';
 

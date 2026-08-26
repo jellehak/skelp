@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import { parseArgs } from './lib/parseArgs.js';
 import { loadConfig, saveConfig } from './lib/config.js';
 import { detectProvider, fetchModels } from './lib/detect-provider.js';
-import { AIClient } from './llm/client.js';
+import { AIClient } from './llm/openai-client.js';
 import { SkelpShell } from './shell.js';
 import { executeCommand } from './lib/commands.js';
 import { createPlainCli, stripBlessedTags } from './lib/plain-cli.js';
@@ -42,6 +42,11 @@ async function main() {
   if (args.help) {
     printHelp();
     process.exit(0);
+  }
+
+  const tuiRequested = positionalArgs[0]?.toLowerCase() === 'tui';
+  if (tuiRequested) {
+    positionalArgs.shift();
   }
 
   // Handle CLI config or built-in subcommands (e.g. skelp config get, skelp models, skelp help, skelp web)
@@ -91,32 +96,19 @@ async function main() {
 
   const client = new AIClient(config);
 
-  if (args.cli) {
-    const plainCli = createPlainCli(client);
-    if (positionalArgs.length > 0) {
-      try {
-        await plainCli.runOnce(positionalArgs.join(' '));
-        process.exit(0);
-      } catch (err) {
-        console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
-        process.exit(1);
-      }
-    }
-    plainCli.start();
-    return;
-  }
-
-  // If we have positional arguments (e.g. skelp "Write a summary..."), run as one-off task
   if (positionalArgs.length > 0) {
     const prompt = positionalArgs.join(' ');
-    const shellInstance = new SkelpShell(client);
+    const plainCli = createPlainCli(client);
     try {
-      await shellInstance.handleInput(prompt);
+      await plainCli.runOnce(prompt);
       process.exit(0);
     } catch (err) {
       console.error(`\x1b[31mError: ${err.message}\x1b[0m`);
       process.exit(1);
     }
+  } else if (!tuiRequested || args.cli) {
+    const plainCli = createPlainCli(client);
+    plainCli.start();
   } else {
     // Start interactive Skelp shell
     const shellInstance = new SkelpShell(client);
@@ -152,10 +144,10 @@ function printHelp() {
 \x1b[1mSkelp\x1b[0m — A minimal shell powered by local running assistant.
 
 \x1b[1mUsage:\x1b[0m
-  skelp                       Start interactive natural-language shells.
-  skelp --cli                 Start the line-based CLI shell.
+  skelp                       Start the line-based CLI shell.
+  skelp tui                   Start the interactive TUI shell.
   skelp [task/command]        Run a one-off natural-language prompt or action direct.
-  skelp --cli [task/command]  Run a one-off prompt without the TUI.
+  skelp --cli [task/command]  Alias for the line-based CLI shell.
   skelp web [port]            Start the web interface (default port: 3000).
   skelp config <get|set|list> Manage configuration settings.
 

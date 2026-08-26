@@ -122,6 +122,6 @@ export class OpenAIClient {
 }
 
 // Re-export AIAgent as AIClient for backwards compatibility
-export { AIAgent as AIClient } from '../agent.js';
-export { AIAgent } from '../agent.js';
+export { AIAgent as AIClient } from '../skelp-agent.js';
+export { AIAgent } from '../skelp-agent.js';
 
