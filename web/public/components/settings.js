@@ -61,43 +61,6 @@ body {
   background: #e4f4ee;
 }
 
-.message.user {
-  --message-avatar-bg: #d9f1e8;
-  --message-avatar-color: #1d6b57;
-  --message-avatar-border: 1px solid #9fd7c7;
-  --message-content-bg: #d9f1e8;
-  --message-content-border: 1px solid #9fd7c7;
-  --message-content-border-right: 2px solid var(--accent);
-}
-
-.message.assistant {
-  --message-avatar-bg: #fff2df;
-  --message-avatar-color: #9a5b22;
-  --message-avatar-border: 1px solid #e7c79f;
-  --message-content-bg: #ffffff;
-  --message-content-border: 1px solid #ded2c2;
-  --message-content-border-left: 2px solid #d28a45;
-}
-
-.message-content pre {
-  background: #f3eee5;
-  border-color: #d9cec0;
-  color: #25211c;
-}
-
-.message-content code {
-  background: #eee5d8;
-  color: #25211c;
-}
-
-.message-content pre code {
-  background: transparent;
-}
-
-.message-content th {
-  background: #f3eee5;
-}
-
 .btn-primary {
   color: #ffffff;
 }`
