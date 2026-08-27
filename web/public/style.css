@@ -166,6 +166,13 @@ html, body {
 
 /* Messages */
 .message {
+  --message-avatar-bg: var(--surface);
+  --message-avatar-color: var(--text-muted);
+  --message-avatar-border: 0;
+  --message-content-bg: var(--assistant-bg);
+  --message-content-border: 0;
+  --message-content-border-left: var(--message-content-border);
+  --message-content-border-right: var(--message-content-border);
   display: flex;
   gap: 12px;
   margin-bottom: 20px;
@@ -173,6 +180,18 @@ html, body {
   margin-left: auto;
   margin-right: auto;
   animation: fadeIn 0.2s ease;
+}
+
+.message.user {
+  --message-avatar-bg: var(--user-bg);
+  --message-avatar-color: #7dd3fc;
+  --message-content-bg: var(--user-bg);
+}
+
+.message.assistant {
+  --message-avatar-bg: var(--accent-dim);
+  --message-avatar-color: white;
+  --message-content-bg: var(--assistant-bg);
 }
 
 @keyframes fadeIn {
@@ -190,16 +209,9 @@ html, body {
   font-size: 14px;
   flex-shrink: 0;
   margin-top: 2px;
-}
-
-.message.user .message-avatar {
-  background: var(--user-bg);
-  color: #7dd3fc;
-}
-
-.message.assistant .message-avatar {
-  background: var(--accent-dim);
-  color: white;
+  border: var(--message-avatar-border);
+  background: var(--message-avatar-bg);
+  color: var(--message-avatar-color);
 }
 
 .message-body {
@@ -211,16 +223,12 @@ html, body {
   padding: 10px 14px;
   border-radius: var(--radius);
   line-height: 1.65;
+  border: var(--message-content-border);
+  border-left: var(--message-content-border-left);
+  border-right: var(--message-content-border-right);
+  background: var(--message-content-bg);
   word-wrap: break-word;
   overflow-wrap: break-word;
-}
-
-.message.user .message-content {
-  background: var(--user-bg);
-}
-
-.message.assistant .message-content {
-  background: var(--assistant-bg);
 }
 
 /* Markdown styles */
@@ -536,6 +544,77 @@ html, body {
   resize: vertical;
 }
 
+.field textarea.custom-css-input {
+  min-height: 140px;
+  font-family: var(--mono);
+}
+
+.preset-select {
+  margin-bottom: 8px;
+}
+
+.field-checkbox { margin-top: -4px; }
+
+.field-checkbox .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.checkbox-box {
+  position: relative;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.checkbox-box::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform .12s ease;
+}
+
+.checkbox-label:hover .checkbox-box {
+  border-color: var(--accent-dim);
+}
+
+.checkbox-input:checked + .checkbox-box {
+  border-color: var(--accent-dim);
+  background: var(--accent);
+}
+
+.checkbox-input:checked + .checkbox-box::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.checkbox-input:focus-visible + .checkbox-box {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 2px;
+}
+
 .field select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -680,13 +759,11 @@ body { background-image: linear-gradient(rgba(38, 48, 47, .16) 1px, transparent 
 .welcome img { width: 46px; height: 46px; margin-bottom: 18px; opacity: .8; filter: saturate(.7); }
 .welcome h2 { margin-bottom: 5px; font-size: 19px; letter-spacing: .01em; }
 .welcome p { max-width: 360px; font-size: 13px; }
-.message { max-width: 820px; margin-bottom: 22px; }
-.message-avatar { width: 28px; height: 28px; margin-top: 3px; border: 1px solid var(--border); border-radius: 5px; font: 10px var(--mono); }
-.message.user .message-avatar { border-color: #31544c; background: #14221f; color: var(--accent); }
-.message.assistant .message-avatar { border-color: #63472f; background: #251b14; color: #e9a36e; }
-.message-content { position: relative; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); line-height: 1.65; }
-.message.user .message-content { border-color: #31544c; border-right: 2px solid var(--accent); background: rgba(20, 34, 31, .78); }
-.message.assistant .message-content { border-left: 2px solid #63472f; background: rgba(17, 21, 22, .92); }
+.message { --message-avatar-border: 1px solid var(--border); --message-content-border: 1px solid var(--border); max-width: 820px; margin-bottom: 22px; }
+.message.user { --message-avatar-bg: #14221f; --message-avatar-color: var(--accent); --message-avatar-border: 1px solid #31544c; --message-content-bg: rgba(20, 34, 31, .78); --message-content-border: 1px solid #31544c; --message-content-border-right: 2px solid var(--accent); }
+.message.assistant { --message-avatar-bg: #251b14; --message-avatar-color: #e9a36e; --message-avatar-border: 1px solid #63472f; --message-content-bg: rgba(17, 21, 22, .92); --message-content-border-left: 2px solid #63472f; }
+.message-avatar { width: 28px; height: 28px; margin-top: 3px; border-radius: 5px; font: 10px var(--mono); }
+.message-content { position: relative; padding: 10px 14px; border-radius: var(--radius); line-height: 1.65; }
 .message.user .message-body { max-width: 680px; margin-left: auto; }
 .message.user { justify-content: flex-end; }
 .message.user .message-avatar { order: 2; }
@@ -728,6 +805,7 @@ body { background-image: linear-gradient(rgba(38, 48, 47, .16) 1px, transparent 
 .settings-header h2 { font-size: 14px; }
 .settings-body { padding: 18px; }
 .field label { color: var(--text-muted); font: 11px var(--mono); }
+.field-checkbox .checkbox-label { display: flex; font: 12px var(--font); }
 .field input, .field textarea, .field select { border-color: var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 13px; }
 .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent-dim); }
 .btn { border-color: #34413e; border-radius: var(--radius-sm); background: var(--surface); font-size: 12px; }

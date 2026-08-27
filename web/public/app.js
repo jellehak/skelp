@@ -1,11 +1,12 @@
 import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { useSessions } from './compositions/sessions.js';
 import { MessageList } from './components/messages.js';
+import { SettingsPanel, applyCustomCss, loadCustomCss, saveCustomCss } from './components/settings.js';
 
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 createApp({
-  components: { MessageList },
+  components: { MessageList, SettingsPanel },
 
   template: `
     <div class="header">
@@ -16,7 +17,7 @@ createApp({
       <div class="header-right">
         <span class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
         <button class="btn-icon" @click="clearChat" title="New chat">+</button>
-        <button class="btn-icon" @click="showSettings = true" title="Settings">&#9881;</button>
+        <button class="btn-icon" @click="openSettings" title="Settings">&#9881;</button>
       </div>
     </div>
 
@@ -114,44 +115,14 @@ createApp({
       <div class="input-hint">{{ isTouchDevice ? 'Tap send to submit &middot; Enter for new line' : 'Enter to send &middot; Shift+Enter for new line' }}</div>
     </div>
 
-    <div v-if="showSettings" class="settings-overlay" @click.self="showSettings = false">
-      <div class="settings-panel">
-        <div class="settings-header">
-          <h2>Settings</h2>
-          <button class="btn-icon" @click="showSettings = false">&times;</button>
-        </div>
-        <div class="settings-body">
-          <div class="field">
-            <label>LLM Server</label>
-            <input v-model="config.server" placeholder="http://localhost:1234">
-          </div>
-          <div class="field">
-            <label>Model</label>
-            <select v-if="models.length" v-model="config.primaryModel">
-              <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <input v-else v-model="config.primaryModel" placeholder="local-ai-model">
-          </div>
-          <div class="field">
-            <label>Tone</label>
-            <input v-model="config.tone" placeholder="concise, friendly and helpful">
-          </div>
-          <div class="field">
-            <label>System Instructions</label>
-            <textarea v-model="config.userSystem" placeholder="Additional instructions for the assistant..."></textarea>
-          </div>
-          <div class="field">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              <input type="checkbox" v-model="config.autoApprove"> Auto-approve tool calls
-            </label>
-          </div>
-        </div>
-        <div class="settings-footer">
-          <button class="btn" @click="showSettings = false">Cancel</button>
-          <button class="btn btn-primary" @click="saveSettings">Save</button>
-        </div>
-      </div>
-    </div>
+    <settings-panel
+      v-if="showSettings"
+      :config="config"
+      :models="models"
+      v-model:custom-css="customCss"
+      @close="closeSettings"
+      @save="saveSettings"
+    />
 
   `,
 
@@ -159,6 +130,8 @@ createApp({
     const messages = reactive([]);
     const input = ref('');
     const showSettings = ref(false);
+    const customCss = ref('');
+    const savedCustomCss = ref('');
     const streaming = ref(false);
     const connectionStatus = ref('connecting');
     const models = ref([]);
@@ -302,6 +275,9 @@ createApp({
 
     async function saveSettings() {
       try {
+        saveCustomCss(customCss.value);
+        applyCustomCss(customCss.value);
+        savedCustomCss.value = customCss.value;
         await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -318,6 +294,16 @@ createApp({
       } catch (err) {
         console.error('Failed to save settings:', err);
       }
+    }
+
+    function openSettings() {
+      customCss.value = savedCustomCss.value;
+      showSettings.value = true;
+    }
+
+    function closeSettings() {
+      customCss.value = savedCustomCss.value;
+      showSettings.value = false;
     }
 
     function clearChat() {
@@ -485,6 +471,9 @@ createApp({
     }
 
     onMounted(async () => {
+      savedCustomCss.value = loadCustomCss();
+      customCss.value = savedCustomCss.value;
+      applyCustomCss(savedCustomCss.value);
       restoreSessions();
       await loadConfig();
       await loadModels();
@@ -498,6 +487,7 @@ createApp({
       messages,
       input,
       showSettings,
+      customCss,
       streaming,
       connectionStatus,
       statusLabel,
@@ -511,6 +501,8 @@ createApp({
       confirmDeleteId,
       send,
       clearChat,
+      openSettings,
+      closeSettings,
       switchSession,
       deleteSession,
       formatSessionDate,
