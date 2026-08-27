@@ -5,7 +5,7 @@ description: Instructions for storing and retrieving persistent user and project
 
 # Memory Management Skill
 
-Use this skill to maintain persistent notes for the user and their projects. Memory is stored as Markdown files in `~/.skelp/memory/` and is available across sessions.
+Use this skill to maintain persistent notes for the user and their projects. Memory is stored as Markdown files in `memory/` relative to the current working directory. With `skelp web` and no directory argument, this is `~/.skelp/memory/`.
 
 ## Storage Rules
 
@@ -18,30 +18,30 @@ Use this skill to maintain persistent notes for the user and their projects. Mem
 
 ## Available Operations
 
-Use the existing filesystem tools where possible. Resolve all memory paths under `~/.skelp/memory/`.
+Use the existing filesystem tools where possible. Resolve all memory paths under `memory/` relative to the current working directory.
 
 ### List
 
 Use `execute_command`:
 
 ```sh
-mkdir -p ~/.skelp/memory && find ~/.skelp/memory -type f -name '*.md' -print
+mkdir -p memory && find memory -type f -name '*.md' -print
 ```
 
 ### Read
 
-Use `read_file` with a path such as `~/.skelp/memory/preferences.md`. For a quick overview, use `execute_command`:
+Use `read_file` with a path such as `memory/preferences.md`. For a quick overview, use `execute_command`:
 
 ```sh
-find ~/.skelp/memory -type f -name '*.md' -exec sh -c 'printf "\\n--- %s ---\\n" "$1"; cat "$1"' _ {} \\
+find memory -type f -name '*.md' -exec sh -c 'printf "\\n--- %s ---\\n" "$1"; cat "$1"' _ {} \\
 ```
 
 ### Create or Update
 
-Use `write_file` with an absolute path under `~/.skelp/memory/`. Create the directory first when needed:
+Use `write_file` with a path under `memory/`. Create the directory first when needed:
 
 ```sh
-mkdir -p ~/.skelp/memory
+mkdir -p memory
 ```
 
 Prefer `write_file` over shell redirection because it handles the content as a tool argument and avoids quoting problems. Use the existing file content as context when updating it.
@@ -51,10 +51,10 @@ Prefer `write_file` over shell redirection because it handles the content as a t
 Only delete a memory file when the user explicitly asks to forget or remove that information. Use `execute_command` with the exact file path:
 
 ```sh
-rm -- ~/.skelp/memory/<file>.md
+rm -- memory/<file>.md
 ```
 
-Never use broad deletion patterns such as `rm -rf ~/.skelp/memory` or `rm ~/.skelp/memory/*.md`.
+Never use broad deletion patterns such as `rm -rf memory` or `rm memory/*.md`.
 
 ## Workflow
 

@@ -69,6 +69,7 @@ export function createAgent(options = {}) {
       const execTools = execOptions.tools || tools;
       const execOnToolCall = execOptions.onToolCall || null;
       const execOnToolCallDelta = execOptions.onToolCallDelta || null;
+      const execOnToolResult = execOptions.onToolResult || onToolResult;
       const execOnReasoning = execOptions.onReasoning || null;
       const statusCallback = execOptions.onStatus || onStatus || (execOptions.readlineInterface?.updateStatus ? (msg) => execOptions.readlineInterface.updateStatus(msg) : null);
 
@@ -93,8 +94,10 @@ export function createAgent(options = {}) {
 
       let loop = true;
       let stepsRemaining = execMaxSteps;
+      let stepIndex = 0;
 
       while (loop && stepsRemaining > 0) {
+        const currentStep = stepIndex++;
         stepsRemaining--;
         let response;
         const activeToolCalls = {};
@@ -119,7 +122,7 @@ export function createAgent(options = {}) {
                 for (const tc of delta.tool_calls) {
                   const idx = tc.index ?? 0;
                   if (!activeToolCalls[idx]) {
-                    activeToolCalls[idx] = { id: tc.id || '', name: tc.function?.name || '', arguments: '' };
+                    activeToolCalls[idx] = { key: `${currentStep}:${idx}`, id: tc.id || '', name: tc.function?.name || '', arguments: '' };
                   }
                   if (tc.id) activeToolCalls[idx].id = tc.id;
                   if (tc.function?.name) activeToolCalls[idx].name = tc.function.name;
@@ -128,6 +131,8 @@ export function createAgent(options = {}) {
                   const currentTool = activeToolCalls[idx];
                   if (execOnToolCallDelta) {
                     execOnToolCallDelta({
+                      key: currentTool.key,
+                      step: currentStep,
                       index: idx,
                       id: currentTool.id,
                       name: currentTool.name,
@@ -172,15 +177,17 @@ export function createAgent(options = {}) {
 
         // Process Tool Calls
         if (toolCalls.length > 0) {
-          for (const tc of toolCalls) {
+          for (let index = 0; index < toolCalls.length; index++) {
+            const tc = toolCalls[index];
             let toolResult = '';
             const actionName = tc.function.name;
             let argsObj = {};
+            const key = `${currentStep}:${index}`;
 
             try {
               argsObj = JSON.parse(tc.function.arguments || '{}');
               if (execOnToolCall) {
-                execOnToolCall({ name: actionName, args: argsObj, id: tc.id });
+                execOnToolCall({ key, step: currentStep, index, name: actionName, args: argsObj, id: tc.id });
               }
               const handler = toolHandlers.get(actionName);
               if (handler) {
@@ -192,8 +199,8 @@ export function createAgent(options = {}) {
               toolResult = `Tool execution error: ${err.message}`;
             }
 
-            if (onToolResult) {
-              onToolResult({ name: actionName, args: argsObj, result: toolResult });
+            if (execOnToolResult) {
+              execOnToolResult({ key, step: currentStep, index, id: tc.id, name: actionName, args: argsObj, result: toolResult });
             }
 
             if (execLogger) {

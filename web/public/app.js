@@ -1,5 +1,6 @@
 import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { useSessions } from './compositions/sessions.js';
+import { useMicroApps } from './compositions/micro-apps.js';
 import { MessageList } from './components/messages.js';
 import { SettingsPanel, applyCustomCss, loadCustomCss, saveCustomCss } from './components/settings.js';
 
@@ -16,6 +17,9 @@ createApp({
       </div>
       <div class="header-right">
         <span class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
+        <button class="btn-icon" @click="showFiles = true" title="Files" aria-label="Open files">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"></path></svg>
+        </button>
         <button class="btn-icon" @click="clearChat" title="New chat">+</button>
         <button class="btn-icon" @click="openSettings" title="Settings">&#9881;</button>
       </div>
@@ -88,7 +92,7 @@ createApp({
           <h2>Skelp</h2>
           <p>A minimal shell powered by local AI. Type a message to get started.</p>
         </div>
-        <message-list :messages="messages" :streaming="streaming" />
+        <message-list :messages="messages" :streaming="streaming" @micro-app-load="postMicroAppTheme" />
       </div>
       <button v-if="!autoScroll && messages.length" class="scroll-jump-btn" @click="jumpToBottom">&#8595; New messages</button>
     </div>
@@ -124,12 +128,28 @@ createApp({
       @save="saveSettings"
     />
 
+    <div v-if="showFiles" class="built-in-app-overlay" @click.self="showFiles = false">
+      <section class="built-in-app" aria-label="Files">
+        <header class="built-in-app-header">
+          <span>Files</span>
+          <button class="btn-icon" @click="showFiles = false" title="Close files" aria-label="Close files">&times;</button>
+        </header>
+        <iframe
+          src="/built-in/files/index.html"
+          title="Files"
+          data-micro-app="files"
+          @load="postMicroAppTheme"
+        ></iframe>
+      </section>
+    </div>
+
   `,
 
   setup() {
     const messages = reactive([]);
     const input = ref('');
     const showSettings = ref(false);
+    const showFiles = ref(false);
     const customCss = ref('');
     const savedCustomCss = ref('');
     const streaming = ref(false);
@@ -317,6 +337,8 @@ createApp({
       send();
     }
 
+    const { postTheme: postMicroAppTheme, registerApps } = useMicroApps({ messages, send, scrollToBottom });
+
     async function send() {
       const text = input.value.trim();
       if (!text) return;
@@ -333,7 +355,7 @@ createApp({
       await nextTick();
       scrollToBottom(true);
 
-      const assistantMsg = reactive({ role: 'assistant', content: '', reasoning: '', toolEvents: [] });
+      const assistantMsg = reactive({ role: 'assistant', content: '', reasoning: '', toolEvents: [], parts: [], traceSeq: 0 });
       messages.push(assistantMsg);
       const sessionId = activeSessionId.value;
 
@@ -397,40 +419,76 @@ createApp({
 
       activeRequest.value = null;
       streaming.value = false;
+      if (registerApps(assistantMsg)) persistActiveSession();
       persistActiveSession();
       scrollToBottom();
       await nextTick();
       inputRef.value?.focus();
     }
 
-    function findToolEvent(msg, { index, id }) {
+    function nextTraceId(msg, type) {
+      msg.traceSeq = (msg.traceSeq || 0) + 1;
+      return `${type}-${msg.traceSeq}`;
+    }
+
+    function appendTraceContent(msg, type, content) {
+      if (!content) return;
+      if (!Array.isArray(msg.parts)) msg.parts = [];
+      const lastPart = msg.parts[msg.parts.length - 1];
+      if (lastPart && lastPart.type === type) {
+        lastPart.content += content;
+        return;
+      }
+      msg.parts.push({ id: nextTraceId(msg, type), type, content });
+    }
+
+    function findToolEvent(msg, { key, index, id, runningOnly = false }) {
+      if (!Array.isArray(msg.toolEvents)) msg.toolEvents = [];
+      const events = runningOnly ? msg.toolEvents.filter((e) => e.status === 'running') : msg.toolEvents;
+      if (key) {
+        const byKey = events.find((e) => e.key === key);
+        if (byKey) return byKey;
+      }
       if (id) {
-        const byId = msg.toolEvents.find((e) => e.id === id);
+        const byId = events.find((e) => e.toolId === id || e.id === id);
         if (byId) return byId;
       }
       if (index !== undefined) {
-        return msg.toolEvents.find((e) => e.index === index);
+        return events.find((e) => e.index === index);
       }
       return null;
+    }
+
+    function appendToolTrace(msg, entry) {
+      if (!Array.isArray(msg.parts)) msg.parts = [];
+      msg.parts.push(entry);
     }
 
     function handleEvent(type, data, msg) {
       switch (type) {
         case 'text':
-          if (data.content) msg.content += data.content;
+          if (data.content) {
+            msg.content += data.content;
+            appendTraceContent(msg, 'text', data.content);
+          }
           scrollToBottom();
           break;
         case 'reasoning':
-          if (data.content) msg.reasoning += data.content;
+          if (data.content) {
+            msg.reasoning += data.content;
+            appendTraceContent(msg, 'reasoning', data.content);
+          }
           scrollToBottom();
           break;
         case 'tool_call_delta': {
-          let entry = findToolEvent(msg, { index: data.index, id: data.id });
+          let entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true });
           if (!entry) {
-            entry = { index: data.index, id: data.id || '', name: data.name || '', argsStr: '', status: 'running', result: '' };
+            entry = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr: '', status: 'running', result: '' };
             msg.toolEvents.push(entry);
+            appendToolTrace(msg, entry);
           } else {
-            if (data.id) entry.id = data.id;
+            if (data.key) entry.key = data.key;
+            if (data.id) entry.toolId = data.id;
             if (data.name) entry.name = data.name;
           }
           entry.argsStr = data.argsStr || '';
@@ -439,11 +497,14 @@ createApp({
         }
         case 'tool_call': {
           const argsStr = data.args ? JSON.stringify(data.args) : '';
-          let entry = findToolEvent(msg, { index: undefined, id: data.id });
+          let entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true });
           if (!entry) {
-            entry = { id: data.id || '', name: data.name || '', argsStr, status: 'running', result: '' };
+            entry = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr, status: 'running', result: '' };
             msg.toolEvents.push(entry);
+            appendToolTrace(msg, entry);
           } else {
+            if (data.key) entry.key = data.key;
+            if (data.id) entry.toolId = data.id;
             entry.name = data.name || entry.name;
             entry.argsStr = argsStr || entry.argsStr;
           }
@@ -451,12 +512,14 @@ createApp({
           break;
         }
         case 'tool_result': {
-          const entry = [...msg.toolEvents].reverse().find((e) => e.name === data.name && e.status === 'running');
+          const entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true }) || [...msg.toolEvents].reverse().find((e) => e.name === data.name && e.status === 'running');
           if (entry) {
             entry.status = 'done';
             entry.result = data.result || '';
           } else {
-            msg.toolEvents.push({ name: data.name || '', argsStr: '', status: 'done', result: data.result || '' });
+            const fallback = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr: '', status: 'done', result: data.result || '' };
+            msg.toolEvents.push(fallback);
+            appendToolTrace(msg, fallback);
           }
           scrollToBottom();
           break;
@@ -487,6 +550,7 @@ createApp({
       messages,
       input,
       showSettings,
+      showFiles,
       customCss,
       streaming,
       connectionStatus,
@@ -516,7 +580,8 @@ createApp({
       onTabTouchStart,
       onTabTouchEnd,
       requestDeleteSession,
-      openSession
+      openSession,
+      postMicroAppTheme
     };
   }
 }).mount('#app');

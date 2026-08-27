@@ -53,6 +53,28 @@ function serveStatic(req, res) {
   res.end(content);
 }
 
+function serveApps(req, res, cwd) {
+  const appsDir = path.join(cwd, 'apps');
+  const relativePath = decodeURIComponent(req.url.split('?')[0].slice('/apps/'.length));
+  const filePath = path.resolve(appsDir, relativePath);
+  if (!filePath.startsWith(`${appsDir}${path.sep}`)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    res.writeHead(404);
+    res.end('Not Found');
+    return;
+  }
+
+  const ext = path.extname(filePath);
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': contentType });
+  res.end(fs.readFileSync(filePath));
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -80,7 +102,38 @@ function sendSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-async function handleChat(req, res) {
+function handleFiles(req, res, cwd) {
+  const requestedPath = new URL(req.url, 'http://localhost').searchParams.get('path') || '.';
+  const rootPath = path.resolve(cwd);
+  const targetPath = path.resolve(rootPath, requestedPath);
+  if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
+    return json(res, 403, { error: 'Path is outside the working directory' });
+  }
+
+  try {
+    const entries = fs.readdirSync(targetPath, { withFileTypes: true })
+      .map((entry) => {
+        const entryPath = path.join(targetPath, entry.name);
+        const stats = fs.statSync(entryPath);
+        return {
+          name: entry.name,
+          path: path.relative(rootPath, entryPath) || '.',
+          type: entry.isDirectory() ? 'directory' : 'file',
+          size: stats.size,
+          updatedAt: stats.mtimeMs
+        };
+      })
+      .sort((left, right) => {
+        if (left.type !== right.type) return left.type === 'directory' ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+    json(res, 200, { path: path.relative(rootPath, targetPath) || '.', entries });
+  } catch (err) {
+    json(res, err.code === 'ENOENT' ? 404 : 400, { error: err.message });
+  }
+}
+
+async function handleChat(req, res, cwd) {
   let body;
   try {
     body = await parseBody(req);
@@ -121,7 +174,7 @@ async function handleChat(req, res) {
       tone: config.tone,
       userSystem: config.userSystem,
       autoApprove: true,
-      cwd: process.cwd(),
+      cwd,
       chatHistory: messages.slice(0, -1)
     });
     await agent.executeGoal(
@@ -133,9 +186,9 @@ async function handleChat(req, res) {
       null,
       null,
       {
-        onToolCall: ({ name, args, id }) => sendSSE(res, 'tool_call', { name, args, id, status: 'running' }),
-        onToolResult: ({ name, args, result }) => sendSSE(res, 'tool_result', { name, args, result: String(result).slice(0, 2000) }),
-        onToolCallDelta: ({ index, id, name, argsSoFar }) => sendSSE(res, 'tool_call_delta', { index, id, name, argsStr: argsSoFar }),
+        onToolCall: ({ key, step, index, name, args, id }) => sendSSE(res, 'tool_call', { key, step, index, name, args, id, status: 'running' }),
+        onToolResult: ({ key, step, index, id, name, args, result }) => sendSSE(res, 'tool_result', { key, step, index, id, name, args, result: String(result).slice(0, 2000) }),
+        onToolCallDelta: ({ key, step, index, id, name, argsSoFar }) => sendSSE(res, 'tool_call_delta', { key, step, index, id, name, argsStr: argsSoFar }),
         onReasoning: (content) => sendSSE(res, 'reasoning', { content })
       }
     );
@@ -183,7 +236,7 @@ async function handleConfigPost(req, res) {
   }
 }
 
-async function handleRequest(req, res) {
+async function handleRequest(req, res, cwd) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -195,18 +248,20 @@ async function handleRequest(req, res) {
 
   const url = req.url.split('?')[0];
 
-  if (url === '/api/chat' && req.method === 'POST') return handleChat(req, res);
+  if (url === '/api/chat' && req.method === 'POST') return handleChat(req, res, cwd);
   if (url === '/api/models' && req.method === 'GET') return handleModels(req, res);
   if (url === '/api/config' && req.method === 'GET') return handleConfigGet(req, res);
   if (url === '/api/config' && req.method === 'POST') return handleConfigPost(req, res);
+  if (url === '/api/files' && req.method === 'GET') return handleFiles(req, res, cwd);
+  if (url.startsWith('/apps/') && req.method === 'GET') return serveApps(req, res, cwd);
 
   serveStatic(req, res);
 }
 
-export function start(port = 3000) {
-  const server = http.createServer(handleRequest);
-  server.listen(port, () => {
-    console.log(`\x1b[1mSkelp\x1b[0m web interface running at \x1b[36mhttp://localhost:${port}\x1b[0m`);
+export function start(port = 3000, cwd = process.cwd(), host = '0.0.0.0') {
+  const server = http.createServer((req, res) => handleRequest(req, res, cwd));
+  server.listen(port, host, () => {
+    console.log(`\x1b[1mSkelp\x1b[0m web interface running at \x1b[36mhttp://${host}:${port}\x1b[0m`);
     console.log(`\x1b[2mPress Ctrl+C to stop.\x1b[0m`);
   });
 }

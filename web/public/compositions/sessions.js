@@ -66,6 +66,8 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
       content: message.content || '',
       reasoning: message.reasoning || '',
       toolEvents: message.toolEvents || [],
+      parts: message.parts || [],
+      microApps: message.microApps || [],
       error: message.error || null
     }));
 

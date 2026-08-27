@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import readline from 'node:readline';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { parseArgs } from './lib/parseArgs.js';
 import { loadConfig, saveConfig } from './lib/config.js';
 import { detectProvider, fetchModels } from './lib/detect-provider.js';
@@ -13,6 +16,7 @@ async function main() {
   const definitions = {
     server: { type: 'string', alias: 's' },
     model: { type: 'string', alias: 'm' },
+    host: { type: 'string' },
     help: { type: 'boolean', alias: 'h' },
     yes: { type: 'boolean', alias: 'y' },
     cli: { type: 'boolean' }
@@ -55,9 +59,15 @@ async function main() {
     const subCmd = positionalArgs[0].toLowerCase();
 
     if (subCmd === 'web') {
-      const port = positionalArgs[1] ? parseInt(positionalArgs[1], 10) : 3000;
+      const webArgs = positionalArgs.slice(1);
+      const port = /^\d+$/.test(webArgs[0] || '') ? parseInt(webArgs.shift(), 10) : 3000;
+      const cwd = path.resolve(webArgs[0] || path.join(os.homedir(), '.skelp'));
+      if (webArgs[0] && (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory())) {
+        throw new Error(`Web working directory does not exist: ${cwd}`);
+      }
+      fs.mkdirSync(cwd, { recursive: true });
       const { start } = await import('./web/server.js');
-      start(port);
+      start(port, cwd, args.host);
       return;
     }
 
@@ -148,7 +158,7 @@ function printHelp() {
   skelp tui                   Start the interactive TUI shell.
   skelp [task/command]        Run a one-off natural-language prompt or action direct.
   skelp --cli [task/command]  Alias for the line-based CLI shell.
-  skelp web [port]            Start the web interface (default port: 3000).
+  skelp web [port] [directory] Start the web interface (default port: 3000, CWD: ~/.skelp).
   skelp config <get|set|list> Manage configuration settings.
 
 \x1b[1mConfig Commands:\x1b[0m
@@ -159,6 +169,7 @@ function printHelp() {
 \x1b[1mOptions:\x1b[0m
   -s, --server <url>          Override OpenAI-compatible server URL (default: auto-detect). Use "auto" to re-trigger detection.
   -m, --model <name>          Override primary model name (default: local-ai-model).
+      --host <address>        Bind the web interface to an address (default: 0.0.0.0).
   -y, --yes                   Automatically approve all workspace/shell commands without prompting.
   -h, --help                  Show help.
 
