@@ -134,7 +134,9 @@ async function handleChat(req, res) {
       null,
       {
         onToolCall: ({ name, args, id }) => sendSSE(res, 'tool_call', { name, args, id, status: 'running' }),
-        onToolResult: ({ name, args, result }) => sendSSE(res, 'tool_result', { name, args, result: String(result).slice(0, 2000) })
+        onToolResult: ({ name, args, result }) => sendSSE(res, 'tool_result', { name, args, result: String(result).slice(0, 2000) }),
+        onToolCallDelta: ({ index, id, name, argsSoFar }) => sendSSE(res, 'tool_call_delta', { index, id, name, argsStr: argsSoFar }),
+        onReasoning: (content) => sendSSE(res, 'reasoning', { content })
       }
     );
     sendSSE(res, 'done', {});

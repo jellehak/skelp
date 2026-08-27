@@ -243,7 +243,9 @@ Use the provided tools/functions framework. State the intended action briefly, t
       logger,
       signal,
       onToolCall: callbacks.onToolCall,
-      onToolResult: callbacks.onToolResult
+      onToolResult: callbacks.onToolResult,
+      onToolCallDelta: callbacks.onToolCallDelta,
+      onReasoning: callbacks.onReasoning
     });
   }
 

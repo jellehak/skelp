@@ -1,12 +1,12 @@
 import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
-import { marked } from 'marked';
 import { useSessions } from './compositions/sessions.js';
+import { MessageList } from './components/messages.js';
 
-const BOT_NAME = 'Skelp';
-
-marked.setOptions({ breaks: true, gfm: true });
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 createApp({
+  components: { MessageList },
+
   template: `
     <div class="header">
       <div class="header-left">
@@ -22,65 +22,87 @@ createApp({
 
     <nav v-if="sessions.length" class="session-rail" aria-label="Chat sessions">
       <div class="session-rail-inner">
+        <button class="home-tab" :class="{ active: view === 'overview' }" @click="view = 'overview'" title="All chats">Chats</button>
         <button
           v-for="session in sessions"
           :key="session.id"
           class="session-tab"
-          :class="{ active: session.id === activeSessionId }"
+          :class="{ active: session.id === activeSessionId && view === 'chat', 'show-delete': longPressId === session.id }"
           @click="switchSession(session.id)"
+          @touchstart.passive="onTabTouchStart(session.id)"
+          @touchend="onTabTouchEnd"
+          @touchmove="onTabTouchEnd"
           :title="session.title"
         >
           <span class="session-tab-title">{{ session.title }}</span>
           <time>{{ formatSessionDate(session.updatedAt) }}</time>
+          <span
+            class="tab-delete"
+            :class="{ confirm: confirmDeleteId === session.id }"
+            @click.stop="requestDeleteSession(session.id)"
+            :title="confirmDeleteId === session.id ? 'Click again to delete' : 'Delete chat'"
+          >{{ confirmDeleteId === session.id ? '\u2713' : '\u00d7' }}</span>
         </button>
         <button class="rail-new" @click="clearChat" title="New chat">+</button>
       </div>
     </nav>
 
-    <div class="chat" ref="chatRef">
-      <div v-if="messages.length === 0" class="welcome">
-        <img src="/logo.svg" alt="Skelp">
-        <h2>Skelp</h2>
-        <p>A minimal shell powered by local AI. Type a message to get started.</p>
+    <div v-if="view === 'overview'" class="overview-board">
+      <div class="overview-header">
+        <h2>Chats</h2>
+        <button class="btn btn-primary" @click="clearChat">+ New chat</button>
       </div>
-      <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">
-        <div class="message-avatar">{{ msg.role === 'user' ? 'You' : BOT_NAME }}</div>
-        <div class="message-body">
-          <div v-if="msg.role === 'assistant' && msg.toolEvents && msg.toolEvents.length" class="tool-events">
-            <div v-for="(ev, ti) in msg.toolEvents" :key="ti">
-              <div v-if="ev.type === 'tool_call'" class="tool-call">
-                <span class="tool-name">{{ ev.name }}</span>
-                <span v-if="ev.argsStr"> {{ truncate(ev.argsStr, 120) }}</span>
-              </div>
-              <div v-else-if="ev.type === 'tool_result'" class="tool-result">{{ truncate(ev.result, 500) }}</div>
-            </div>
+      <div class="session-grid">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="session-card"
+          :class="{ 'show-delete': longPressId === session.id }"
+          @click="openSession(session.id)"
+          @touchstart.passive="onTabTouchStart(session.id)"
+          @touchend="onTabTouchEnd"
+          @touchmove="onTabTouchEnd"
+        >
+          <div class="session-card-header">
+            <span class="session-card-title">{{ session.title }}</span>
+            <span
+              class="card-delete"
+              :class="{ confirm: confirmDeleteId === session.id }"
+              @click.stop="requestDeleteSession(session.id)"
+              :title="confirmDeleteId === session.id ? 'Click again to delete' : 'Delete chat'"
+            >{{ confirmDeleteId === session.id ? '\u2713' : '\u00d7' }}</span>
           </div>
-          <div class="message-content">
-            <div v-html="renderMd(msg.content)"></div>
-            <div v-if="msg.error" class="error-message" role="alert">
-              <span class="error-marker">!</span>
-              <div>
-                <strong>{{ msg.error.title }}</strong>
-                <span>{{ msg.error.detail }}</span>
-              </div>
-            </div>
-            <div v-if="msg.role === 'assistant' && streaming && i === messages.length - 1 && !msg.content" class="typing">
-              <span></span><span></span><span></span>
-            </div>
+          <div class="session-card-preview">
+            <message-list :messages="session.messages" preview />
           </div>
+          <time>{{ formatSessionDate(session.updatedAt) }}</time>
         </div>
       </div>
     </div>
 
-    <div class="input-area">
+    <div v-if="view === 'chat'" class="chat-wrap">
+      <div class="chat" ref="chatRef" @scroll="onChatScroll" @touchstart.passive="onChatTouchStart" @touchend="onChatTouchEnd">
+        <div v-if="messages.length === 0" class="welcome">
+          <img src="/logo.svg" alt="Skelp">
+          <h2>Skelp</h2>
+          <p>A minimal shell powered by local AI. Type a message to get started.</p>
+        </div>
+        <message-list :messages="messages" :streaming="streaming" />
+      </div>
+      <button v-if="!autoScroll && messages.length" class="scroll-jump-btn" @click="jumpToBottom">&#8595; New messages</button>
+    </div>
+
+    <div v-if="view === 'chat'" class="input-area">
       <div class="input-wrapper">
         <textarea
           ref="inputRef"
           v-model="input"
-          @keydown.enter.exact.prevent="send"
+          @keydown.enter.exact="handleEnter"
+          @input="autoResize"
           placeholder="Type a message..."
           autofocus
           rows="1"
+          enterkeyhint="enter"
         ></textarea>
         <button class="btn-send" @click="send" :disabled="streaming || !input.trim()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -89,7 +111,7 @@ createApp({
           </svg>
         </button>
       </div>
-      <div class="input-hint">Enter to send &middot; Shift+Enter for new line</div>
+      <div class="input-hint">{{ isTouchDevice ? 'Tap send to submit &middot; Enter for new line' : 'Enter to send &middot; Shift+Enter for new line' }}</div>
     </div>
 
     <div v-if="showSettings" class="settings-overlay" @click.self="showSettings = false">
@@ -143,6 +165,14 @@ createApp({
     const chatRef = ref(null);
     const inputRef = ref(null);
     const activeRequest = ref(null);
+    const view = ref('chat');
+    const autoScroll = ref(true);
+    const longPressId = ref('');
+    const confirmDeleteId = ref('');
+    let longPressTimer = null;
+    let confirmDeleteTimer = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
 
     const {
       sessions,
@@ -168,25 +198,76 @@ createApp({
       return map[connectionStatus.value] || connectionStatus.value;
     });
 
-    function truncate(str, len) {
-      if (!str) return '';
-      return str.length > len ? str.slice(0, len) + '...' : str;
+    function scrollToBottom(force = false) {
+      nextTick(() => {
+        const el = chatRef.value;
+        if (!el) return;
+        if (force || autoScroll.value) {
+          el.scrollTop = el.scrollHeight;
+          autoScroll.value = true;
+        }
+      });
     }
 
-    function renderMd(text) {
-      if (!text) return '';
-      try {
-        return marked.parse(text);
-      } catch {
-        return text;
+    function jumpToBottom() {
+      scrollToBottom(true);
+    }
+
+    function onChatScroll() {
+      const el = chatRef.value;
+      if (!el) return;
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      autoScroll.value = distanceFromBottom < 80;
+    }
+
+    function onChatTouchStart(e) {
+      const t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+    }
+
+    function onChatTouchEnd(e) {
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      if (Math.abs(dx) <= 60 || Math.abs(dy) >= 40) return;
+
+      const idx = sessions.findIndex((s) => s.id === activeSessionId.value);
+      if (idx === -1) return;
+      const nextIdx = dx < 0 ? idx + 1 : idx - 1;
+      if (nextIdx >= 0 && nextIdx < sessions.length) {
+        switchSession(sessions[nextIdx].id);
       }
     }
 
-    function scrollToBottom() {
-      nextTick(() => {
-        const el = chatRef.value;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
+    function onTabTouchStart(id) {
+      clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(() => {
+        longPressId.value = id;
+      }, 500);
+    }
+
+    function onTabTouchEnd() {
+      clearTimeout(longPressTimer);
+    }
+
+    function requestDeleteSession(id) {
+      clearTimeout(confirmDeleteTimer);
+      if (confirmDeleteId.value === id) {
+        confirmDeleteId.value = '';
+        longPressId.value = '';
+        deleteSession(id);
+      } else {
+        confirmDeleteId.value = id;
+        confirmDeleteTimer = setTimeout(() => {
+          confirmDeleteId.value = '';
+        }, 3000);
+      }
+    }
+
+    function openSession(id) {
+      switchSession(id);
+      view.value = 'chat';
     }
 
     function autoResize(e) {
@@ -241,6 +322,13 @@ createApp({
 
     function clearChat() {
       startNewSession();
+      view.value = 'chat';
+    }
+
+    function handleEnter(e) {
+      if (isTouchDevice) return;
+      e.preventDefault();
+      send();
     }
 
     async function send() {
@@ -257,9 +345,9 @@ createApp({
       persistActiveSession();
 
       await nextTick();
-      scrollToBottom();
+      scrollToBottom(true);
 
-      const assistantMsg = reactive({ role: 'assistant', content: '', toolEvents: [] });
+      const assistantMsg = reactive({ role: 'assistant', content: '', reasoning: '', toolEvents: [] });
       messages.push(assistantMsg);
       const sessionId = activeSessionId.value;
 
@@ -329,29 +417,64 @@ createApp({
       inputRef.value?.focus();
     }
 
+    function findToolEvent(msg, { index, id }) {
+      if (id) {
+        const byId = msg.toolEvents.find((e) => e.id === id);
+        if (byId) return byId;
+      }
+      if (index !== undefined) {
+        return msg.toolEvents.find((e) => e.index === index);
+      }
+      return null;
+    }
+
     function handleEvent(type, data, msg) {
       switch (type) {
         case 'text':
           if (data.content) msg.content += data.content;
           scrollToBottom();
           break;
-        case 'tool_call':
-          msg.toolEvents.push({
-            type: 'tool_call',
-            id: data.id || '',
-            name: data.name || '',
-            argsStr: data.args || ''
-          });
+        case 'reasoning':
+          if (data.content) msg.reasoning += data.content;
           scrollToBottom();
           break;
-        case 'tool_result':
-          msg.toolEvents.push({
-            type: 'tool_result',
-            name: data.name || '',
-            result: data.result || ''
-          });
+        case 'tool_call_delta': {
+          let entry = findToolEvent(msg, { index: data.index, id: data.id });
+          if (!entry) {
+            entry = { index: data.index, id: data.id || '', name: data.name || '', argsStr: '', status: 'running', result: '' };
+            msg.toolEvents.push(entry);
+          } else {
+            if (data.id) entry.id = data.id;
+            if (data.name) entry.name = data.name;
+          }
+          entry.argsStr = data.argsStr || '';
           scrollToBottom();
           break;
+        }
+        case 'tool_call': {
+          const argsStr = data.args ? JSON.stringify(data.args) : '';
+          let entry = findToolEvent(msg, { index: undefined, id: data.id });
+          if (!entry) {
+            entry = { id: data.id || '', name: data.name || '', argsStr, status: 'running', result: '' };
+            msg.toolEvents.push(entry);
+          } else {
+            entry.name = data.name || entry.name;
+            entry.argsStr = argsStr || entry.argsStr;
+          }
+          scrollToBottom();
+          break;
+        }
+        case 'tool_result': {
+          const entry = [...msg.toolEvents].reverse().find((e) => e.name === data.name && e.status === 'running');
+          if (entry) {
+            entry.status = 'done';
+            entry.result = data.result || '';
+          } else {
+            msg.toolEvents.push({ name: data.name || '', argsStr: '', status: 'done', result: data.result || '' });
+          }
+          scrollToBottom();
+          break;
+        }
         case 'error':
           msg.error = { title: 'Agent error', detail: data.message || 'Unknown error' };
           scrollToBottom();
@@ -369,7 +492,7 @@ createApp({
     });
 
     return {
-      BOT_NAME,
+      isTouchDevice,
       sessions,
       activeSessionId,
       messages,
@@ -382,15 +505,26 @@ createApp({
       config,
       chatRef,
       inputRef,
-      renderMd,
-      truncate,
+      view,
+      autoScroll,
+      longPressId,
+      confirmDeleteId,
       send,
       clearChat,
       switchSession,
       deleteSession,
       formatSessionDate,
       saveSettings,
-      autoResize
+      autoResize,
+      handleEnter,
+      onChatScroll,
+      jumpToBottom,
+      onChatTouchStart,
+      onChatTouchEnd,
+      onTabTouchStart,
+      onTabTouchEnd,
+      requestDeleteSession,
+      openSession
     };
   }
 }).mount('#app');

@@ -68,6 +68,8 @@ export function createAgent(options = {}) {
       const execMaxSteps = execOptions.maxSteps ?? maxSteps;
       const execTools = execOptions.tools || tools;
       const execOnToolCall = execOptions.onToolCall || null;
+      const execOnToolCallDelta = execOptions.onToolCallDelta || null;
+      const execOnReasoning = execOptions.onReasoning || null;
       const statusCallback = execOptions.onStatus || onStatus || (execOptions.readlineInterface?.updateStatus ? (msg) => execOptions.readlineInterface.updateStatus(msg) : null);
 
       if (execLogger) {
@@ -108,6 +110,11 @@ export function createAgent(options = {}) {
                 JSON.stringify({ timestamp: new Date().toISOString(), delta }, null, 2) + '\n'
               );
 
+              const reasoningDelta = delta.reasoning_content || delta.reasoning || '';
+              if (reasoningDelta && execOnReasoning) {
+                execOnReasoning(reasoningDelta);
+              }
+
               if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
                 for (const tc of delta.tool_calls) {
                   const idx = tc.index ?? 0;
@@ -119,6 +126,15 @@ export function createAgent(options = {}) {
                   if (tc.function?.arguments) activeToolCalls[idx].arguments += tc.function.arguments;
 
                   const currentTool = activeToolCalls[idx];
+                  if (execOnToolCallDelta) {
+                    execOnToolCallDelta({
+                      index: idx,
+                      id: currentTool.id,
+                      name: currentTool.name,
+                      argsSoFar: currentTool.arguments
+                    });
+                  }
+
                   const chunkHandler = toolChunkHandlers.get(currentTool.name);
                   if (chunkHandler) {
                     chunkHandler({

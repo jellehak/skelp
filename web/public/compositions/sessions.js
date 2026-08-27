@@ -64,6 +64,7 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     session.messages = messages.map((message) => ({
       role: message.role,
       content: message.content || '',
+      reasoning: message.reasoning || '',
       toolEvents: message.toolEvents || [],
       error: message.error || null
     }));

@@ -9,7 +9,10 @@
   },
   "scripts": {
     "start": "node cli.js",
-    "test": "node --test"
+    "test": "node --test",
+    "web": "node cli.js web",
+    "lint": "npx eslint . --ext .js,.mjs",
+    "lint:fix": "npx eslint . --ext .js,.mjs --fix"
   },
   "dependencies": {
     "blessed": "^0.1.81"
