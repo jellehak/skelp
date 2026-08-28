@@ -258,7 +258,7 @@ async function handleRequest(req, res, cwd) {
   serveStatic(req, res);
 }
 
-export function start(port = 3000, cwd = process.cwd(), host = '0.0.0.0') {
+export function start(port = 3000, cwd = process.cwd(), host = 'localhost') {
   const server = http.createServer((req, res) => handleRequest(req, res, cwd));
   server.listen(port, host, () => {
     console.log(`\x1b[1mSkelp\x1b[0m web interface running at \x1b[36mhttp://${host}:${port}\x1b[0m`);
