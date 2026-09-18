@@ -2,12 +2,13 @@ import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { useSessions } from './compositions/sessions.js';
 import { useMicroApps } from './compositions/micro-apps.js';
 import { MessageList } from './components/messages.js';
+import { PromptArea } from './components/prompt-area.js';
 import { SettingsPanel, applyCustomCss, loadCustomCss, saveCustomCss } from './components/settings.js';
 
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 createApp({
-  components: { MessageList, SettingsPanel },
+  components: { MessageList, PromptArea, SettingsPanel },
 
   template: `
     <div class="header">
@@ -97,27 +98,14 @@ createApp({
       <button v-if="!autoScroll && messages.length" class="scroll-jump-btn" @click="jumpToBottom">&#8595; New messages</button>
     </div>
 
-    <div v-if="view === 'chat'" class="input-area">
-      <div class="input-wrapper">
-        <textarea
-          ref="inputRef"
-          v-model="input"
-          @keydown.enter.exact="handleEnter"
-          @input="autoResize"
-          placeholder="Type a message..."
-          autofocus
-          rows="1"
-          enterkeyhint="enter"
-        ></textarea>
-        <button class="btn-send" @click="send" :disabled="streaming || !input.trim()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-      </div>
-      <div class="input-hint">{{ isTouchDevice ? 'Tap send to submit &middot; Enter for new line' : 'Enter to send &middot; Shift+Enter for new line' }}</div>
-    </div>
+    <prompt-area
+      v-if="view === 'chat'"
+      ref="inputRef"
+      v-model="input"
+      :streaming="streaming"
+      :is-touch-device="isTouchDevice"
+      @send="send"
+    />
 
     <settings-panel
       v-if="showSettings"
@@ -273,12 +261,6 @@ createApp({
       view.value = 'chat';
     }
 
-    function autoResize(e) {
-      const el = e.target;
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-    }
-
     async function loadConfig() {
       try {
         const res = await fetch('/api/config');
@@ -341,12 +323,6 @@ createApp({
       startNewSession();
       closedTabIds.delete(activeSessionId.value);
       view.value = 'chat';
-    }
-
-    function handleEnter(e) {
-      if (isTouchDevice) return;
-      e.preventDefault();
-      send();
     }
 
     const { postTheme: postMicroAppTheme, registerApps } = useMicroApps({ messages, send, scrollToBottom });
@@ -584,8 +560,6 @@ createApp({
       deleteSession,
       formatSessionDate,
       saveSettings,
-      autoResize,
-      handleEnter,
       onChatScroll,
       jumpToBottom,
       onChatTouchStart,
