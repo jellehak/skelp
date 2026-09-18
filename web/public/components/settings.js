@@ -149,6 +149,15 @@ export const SettingsPanel = {
             <input v-else v-model="config.primaryModel" placeholder="local-ai-model">
           </div>
           <div class="field">
+            <label>Reasoning effort</label>
+            <select v-model="config.reasoningEffort">
+              <option value="none">None</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="field">
             <label>Tone</label>
             <input v-model="config.tone" placeholder="concise, friendly and helpful">
           </div>

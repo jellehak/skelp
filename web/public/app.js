@@ -182,6 +182,7 @@ createApp({
     const config = reactive({
       server: '',
       primaryModel: '',
+      reasoningEffort: 'none',
       tone: 'concise, friendly and helpful',
       autoApprove: false,
       userSystem: ''
@@ -313,6 +314,7 @@ createApp({
           body: JSON.stringify({
             server: config.server,
             primaryModel: config.primaryModel,
+            reasoningEffort: config.reasoningEffort,
             tone: config.tone,
             autoApprove: config.autoApprove,
             userSystem: config.userSystem

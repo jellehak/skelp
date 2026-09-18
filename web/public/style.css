@@ -700,7 +700,7 @@ html, body {
 /* Local session navigation */
 .rail-new { width: 31px; justify-content: center; color: var(--accent); font-size: 17px; }
 .session-rail { flex-shrink: 0; padding: 7px 20px 0; border-bottom: 1px solid var(--border); background: rgba(11, 13, 14, .9); }
-.session-rail-inner { display: flex; gap: 5px; max-width: 860px; margin: 0 auto; overflow-x: auto; padding-bottom: 7px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.session-rail-inner { display: flex; gap: 5px; width: 100%; overflow-x: auto; padding-bottom: 7px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .session-rail-inner::-webkit-scrollbar { height: 4px; }
 .session-rail-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .session-tab, .rail-new { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 31px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text-muted); cursor: pointer; font: 11px var(--mono); transition: .15s ease; }

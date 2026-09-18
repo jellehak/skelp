@@ -171,6 +171,7 @@ async function handleChat(req, res, cwd) {
     const agent = new AIAgent({
       server: config.server,
       primaryModel: config.primaryModel,
+      reasoningEffort: config.reasoningEffort,
       tone: config.tone,
       userSystem: config.userSystem,
       autoApprove: true,

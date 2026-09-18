@@ -6,11 +6,13 @@ export class OpenAIClient {
   constructor(config = {}) {
     this.server = config.server || 'http://localhost:1234';
     this.primaryModel = config.primaryModel || 'local-ai-model';
+    this.reasoningEffort = config.reasoningEffort || 'none';
   }
 
   updateConfig(config = {}) {
     if (config.server !== undefined) this.server = config.server;
     if (config.primaryModel !== undefined) this.primaryModel = config.primaryModel;
+    if (config.reasoningEffort !== undefined) this.reasoningEffort = config.reasoningEffort;
   }
 
   /**
@@ -45,6 +47,8 @@ export class OpenAIClient {
       messages,
       stream: true
     };
+
+    payload.reasoning_effort = this.reasoningEffort;
 
     if (tools && tools.length > 0) {
       payload.tools = tools;
