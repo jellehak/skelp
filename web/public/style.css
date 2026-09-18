@@ -549,8 +549,24 @@ html, body {
   font-family: var(--mono);
 }
 
-.preset-select {
+.preset-actions {
+  display: flex;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.field .preset-select {
+  flex: 1;
+  width: auto;
+}
+
+.preset-clear {
+  flex: 0 0 auto;
+}
+
+.preset-clear:disabled {
+  opacity: .45;
+  cursor: default;
 }
 
 .field-checkbox { margin-top: -4px; }

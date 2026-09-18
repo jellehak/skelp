@@ -1,0 +1,65 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f0ed;
+  --surface: #ffffff;
+  --surface-hover: #f2f2ef;
+  --border: #deded9;
+  --text: #20201e;
+  --text-muted: #73736d;
+  --accent: #222220;
+  --accent-dim: #555550;
+  --user-bg: #ecece8;
+  --assistant-bg: transparent;
+  --input-bg: #ffffff;
+  --radius: 4px;
+  --radius-sm: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151514;
+    --bg-secondary: #1c1c1a;
+    --bg-tertiary: #242421;
+    --surface: #20201e;
+    --surface-hover: #292926;
+    --border: #383834;
+    --text: #eeeeea;
+    --text-muted: #999991;
+    --accent: #eeeeea;
+    --accent-dim: #b8b8b0;
+    --user-bg: #292926;
+    --assistant-bg: transparent;
+    --input-bg: #1c1c1a;
+  }
+}
+
+body {
+  background-image: none;
+}
+
+.header,
+.input-area,
+.session-rail {
+  background: var(--bg-secondary);
+}
+
+.header-left::after,
+.message-avatar {
+  display: none;
+}
+
+.message {
+  --message-content-border: 0;
+  --message-content-border-left: 0;
+  --message-content-border-right: 0;
+}
+
+.message.user {
+  --message-content-bg: var(--user-bg);
+}
+
+.message.assistant {
+  --message-content-bg: transparent;
+}

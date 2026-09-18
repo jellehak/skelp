@@ -1,0 +1,34 @@
+:root {
+  --bg: #08070d;
+  --bg-secondary: #100c18;
+  --bg-tertiary: #181022;
+  --surface: #191126;
+  --surface-hover: #241832;
+  --border: #50305f;
+  --text: #f5efff;
+  --text-muted: #aa91b7;
+  --accent: #20f6ff;
+  --accent-dim: #00a9b8;
+  --user-bg: rgba(255, 35, 163, .13);
+  --assistant-bg: rgba(16, 12, 24, .9);
+  --input-bg: #0d0913;
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+
+body {
+  background-image: none;
+}
+
+.message.user {
+  --message-avatar-color: #ff67c1;
+  --message-avatar-border: 1px solid #ff23a3;
+  --message-content-border: 1px solid rgba(255, 35, 163, .45);
+  --message-content-border-right: 2px solid #ff23a3;
+}
+
+.message.assistant {
+  --message-avatar-color: #20f6ff;
+  --message-avatar-border: 1px solid #20f6ff;
+  --message-content-border-left: 2px solid #20f6ff;
+}

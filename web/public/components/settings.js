@@ -51,8 +51,18 @@ export const SettingsPanel = {
   methods: {
     applyPreset(event) {
       const preset = this.customCssPresets.find((item) => item.name === event.target.value);
-      if (preset) this.customCssModel = preset.css;
+      if (preset) {
+        const currentCss = this.customCssModel.trim();
+        this.customCssModel = currentCss
+          ? preset.prepend
+            ? `${preset.css}\n\n${currentCss}`
+            : `${currentCss}\n\n${preset.css}`
+          : preset.css;
+      }
       event.target.value = '';
+    },
+    clearCustomCss() {
+      this.customCssModel = '';
     }
   },
   computed: {
@@ -103,10 +113,13 @@ export const SettingsPanel = {
           </div>
           <div class="field">
             <label>Custom CSS</label>
-            <select class="preset-select" @change="applyPreset">
-              <option value="">Select a preset...</option>
-              <option v-for="preset in customCssPresets" :key="preset.name" :value="preset.name">{{ preset.name }}</option>
-            </select>
+            <div class="preset-actions">
+              <select class="preset-select" @change="applyPreset">
+                <option value="">Add preset...</option>
+                <option v-for="preset in customCssPresets" :key="preset.name" :value="preset.name">{{ preset.name }}</option>
+              </select>
+              <button class="btn preset-clear" type="button" :disabled="!customCssModel" @click="clearCustomCss">Clear</button>
+            </div>
             <textarea class="custom-css-input" v-model="customCssModel" spellcheck="false" placeholder=".message.assistant .message-body { border-color: #9ad7c2; }"></textarea>
           </div>
           <div class="field field-checkbox">

@@ -68,5 +68,28 @@ body {
 body {
 	font-size: 18px;
 }`
+	},
+	{
+		name: 'Clean assistant',
+		css: `.message-avatar {
+	display: none;
+}
+
+.message.assistant {
+	--message-content-bg: transparent;
+	--message-content-border: 0;
+	--message-content-border-left: 0;
+	--message-content-border-right: 0;
+}`
+	},
+	{
+		name: 'Cyberpunk',
+		prepend: true,
+		css: `@import url('/components/settings/themes/cyberpunk.css');`
+	},
+	{
+		name: 'Minimalistic',
+		prepend: true,
+		css: `@import url('/components/settings/themes/minimalistic.css');`
 	}
 ];

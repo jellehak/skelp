@@ -1,4 +1,5 @@
 import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
+import { useChat } from './compositions/chat.js';
 import { useSessions } from './compositions/sessions.js';
 import { useMicroApps } from './compositions/micro-apps.js';
 import { MessageList } from './components/messages.js';
@@ -17,7 +18,7 @@ createApp({
         <h1>Skelp</h1>
       </div>
       <div class="header-right">
-        <span class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
+        <span v-if="false" class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
         <button class="btn-icon" @click="showFiles = true" title="Files" aria-label="Open files">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"></path></svg>
         </button>
@@ -325,201 +326,24 @@ createApp({
       view.value = 'chat';
     }
 
-    const { postTheme: postMicroAppTheme, registerApps } = useMicroApps({ messages, send, scrollToBottom });
-
-    async function send() {
-      const text = input.value.trim();
-      if (!text) return;
-
-      activeRequest.value?.abort();
-      const requestController = new AbortController();
-      activeRequest.value = requestController;
-
-      messages.push({ role: 'user', content: text });
-      input.value = '';
-      streaming.value = true;
-      persistActiveSession();
-
-      await nextTick();
-      scrollToBottom(true);
-
-      const assistantMsg = reactive({ role: 'assistant', content: '', reasoning: '', toolEvents: [], parts: [], traceSeq: 0 });
-      messages.push(assistantMsg);
-      const sessionId = activeSessionId.value;
-
-      try {
-        const payload = messages
-          .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content))
-          .map((m) => ({ role: m.role, content: m.content }));
-
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: payload }),
-          signal: requestController.signal
-        });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let eventType = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop();
-
-          for (const part of parts) {
-            // console.log('Received part:', part);
-            if (!part.trim()) continue;
-            const lines = part.split('\n');
-            let evType = '';
-            let dataLines = [];
-
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                evType = line.slice(7).trim();
-              } else if (line.startsWith('data: ')) {
-                dataLines.push(line.slice(6));
-              }
-            }
-
-            if (dataLines.length > 0) {
-              try {
-                const data = JSON.parse(dataLines.join('\n'));
-                handleEvent(evType || eventType, data, assistantMsg);
-                if (activeSessionId.value === sessionId) persistActiveSession();
-                if (evType) eventType = evType;
-              } catch {}
-            }
-          }
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          assistantMsg.error = { title: 'Request failed', detail: err.message };
-        }
-      }
-
-      if (activeRequest.value !== requestController) return;
-
-      activeRequest.value = null;
-      streaming.value = false;
-      if (registerApps(assistantMsg)) persistActiveSession();
-      persistActiveSession();
-      scrollToBottom();
-      await nextTick();
-      inputRef.value?.focus();
-    }
-
-    function nextTraceId(msg, type) {
-      msg.traceSeq = (msg.traceSeq || 0) + 1;
-      return `${type}-${msg.traceSeq}`;
-    }
-
-    function appendTraceContent(msg, type, content) {
-      if (!content) return;
-      if (!Array.isArray(msg.parts)) msg.parts = [];
-      const lastPart = msg.parts[msg.parts.length - 1];
-      if (lastPart && lastPart.type === type) {
-        lastPart.content += content;
-        return;
-      }
-      msg.parts.push({ id: nextTraceId(msg, type), type, content });
-    }
-
-    function findToolEvent(msg, { key, index, id, runningOnly = false }) {
-      if (!Array.isArray(msg.toolEvents)) msg.toolEvents = [];
-      const events = runningOnly ? msg.toolEvents.filter((e) => e.status === 'running') : msg.toolEvents;
-      if (key) {
-        const byKey = events.find((e) => e.key === key);
-        if (byKey) return byKey;
-      }
-      if (id) {
-        const byId = events.find((e) => e.toolId === id || e.id === id);
-        if (byId) return byId;
-      }
-      if (index !== undefined) {
-        return events.find((e) => e.index === index);
-      }
-      return null;
-    }
-
-    function appendToolTrace(msg, entry) {
-      if (!Array.isArray(msg.parts)) msg.parts = [];
-      msg.parts.push(entry);
-    }
-
-    function handleEvent(type, data, msg) {
-      switch (type) {
-        case 'text':
-          if (data.content) {
-            msg.content += data.content;
-            appendTraceContent(msg, 'text', data.content);
-          }
-          scrollToBottom();
-          break;
-        case 'reasoning':
-          if (data.content) {
-            msg.reasoning += data.content;
-            appendTraceContent(msg, 'reasoning', data.content);
-          }
-          scrollToBottom();
-          break;
-        case 'tool_call_delta': {
-          let entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true });
-          if (!entry) {
-            entry = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr: '', status: 'running', result: '' };
-            msg.toolEvents.push(entry);
-            appendToolTrace(msg, entry);
-          } else {
-            if (data.key) entry.key = data.key;
-            if (data.id) entry.toolId = data.id;
-            if (data.name) entry.name = data.name;
-          }
-          entry.argsStr = data.argsStr || '';
-          scrollToBottom();
-          break;
-        }
-        case 'tool_call': {
-          const argsStr = data.args ? JSON.stringify(data.args) : '';
-          let entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true });
-          if (!entry) {
-            entry = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr, status: 'running', result: '' };
-            msg.toolEvents.push(entry);
-            appendToolTrace(msg, entry);
-          } else {
-            if (data.key) entry.key = data.key;
-            if (data.id) entry.toolId = data.id;
-            entry.name = data.name || entry.name;
-            entry.argsStr = argsStr || entry.argsStr;
-          }
-          scrollToBottom();
-          break;
-        }
-        case 'tool_result': {
-          const entry = findToolEvent(msg, { key: data.key, index: data.index, id: data.id, runningOnly: true }) || [...msg.toolEvents].reverse().find((e) => e.name === data.name && e.status === 'running');
-          if (entry) {
-            entry.status = 'done';
-            entry.result = data.result || '';
-          } else {
-            const fallback = { id: nextTraceId(msg, 'tool'), type: 'tool', key: data.key || '', index: data.index, toolId: data.id || '', name: data.name || '', argsStr: '', status: 'done', result: data.result || '' };
-            msg.toolEvents.push(fallback);
-            appendToolTrace(msg, fallback);
-          }
-          scrollToBottom();
-          break;
-        }
-        case 'error':
-          msg.error = { title: 'Agent error', detail: data.message || 'Unknown error' };
-          scrollToBottom();
-          break;
-        case 'done':
-          break;
-      }
-    }
+    let send;
+    const { postTheme: postMicroAppTheme, registerApps } = useMicroApps({
+      messages,
+      send: (text) => send(text),
+      scrollToBottom
+    });
+    ({ send } = useChat({
+      messages,
+      input,
+      streaming,
+      activeRequest,
+      activeSessionId,
+      inputRef,
+      persistActiveSession,
+      scrollToBottom,
+      registerApps,
+      nextTick
+    }));
 
     onMounted(async () => {
       savedCustomCss.value = loadCustomCss();
