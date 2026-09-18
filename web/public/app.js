@@ -29,7 +29,7 @@ createApp({
       <div class="session-rail-inner">
         <button class="home-tab" :class="{ active: view === 'overview' }" @click="view = 'overview'" title="All chats">Chats</button>
         <button
-          v-for="session in sessions"
+          v-for="session in openSessions"
           :key="session.id"
           class="session-tab"
           :class="{ active: session.id === activeSessionId && view === 'chat', 'show-delete': longPressId === session.id }"
@@ -43,10 +43,10 @@ createApp({
           <time>{{ formatSessionDate(session.updatedAt) }}</time>
           <span
             class="tab-delete"
-            :class="{ confirm: confirmDeleteId === session.id }"
-            @click.stop="requestDeleteSession(session.id)"
-            :title="confirmDeleteId === session.id ? 'Click again to delete' : 'Delete chat'"
-          >{{ confirmDeleteId === session.id ? '\u2713' : '\u00d7' }}</span>
+            @click.stop="closeSessionTab(session.id)"
+            title="Close tab"
+            aria-label="Close tab"
+          >&times;</span>
         </button>
         <button class="rail-new" @click="clearChat" title="New chat">+</button>
       </div>
@@ -162,6 +162,7 @@ createApp({
     const autoScroll = ref(true);
     const longPressId = ref('');
     const confirmDeleteId = ref('');
+    const closedTabIds = reactive(new Set());
     let longPressTimer = null;
     let confirmDeleteTimer = null;
     let touchStartX = 0;
@@ -190,6 +191,8 @@ createApp({
       const map = { connecting: 'Connecting...', connected: 'Connected', error: 'Disconnected' };
       return map[connectionStatus.value] || connectionStatus.value;
     });
+
+    const openSessions = computed(() => sessions.filter((session) => !closedTabIds.has(session.id)));
 
     function scrollToBottom(force = false) {
       nextTick(() => {
@@ -258,7 +261,13 @@ createApp({
       }
     }
 
+    function closeSessionTab(id) {
+      closedTabIds.add(id);
+      if (activeSessionId.value === id) view.value = 'overview';
+    }
+
     function openSession(id) {
+      closedTabIds.delete(id);
       switchSession(id);
       view.value = 'chat';
     }
@@ -328,6 +337,7 @@ createApp({
 
     function clearChat() {
       startNewSession();
+      closedTabIds.delete(activeSessionId.value);
       view.value = 'chat';
     }
 
@@ -546,6 +556,7 @@ createApp({
     return {
       isTouchDevice,
       sessions,
+      openSessions,
       activeSessionId,
       messages,
       input,
@@ -580,6 +591,7 @@ createApp({
       onTabTouchStart,
       onTabTouchEnd,
       requestDeleteSession,
+      closeSessionTab,
       openSession,
       postMicroAppTheme
     };
