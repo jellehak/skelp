@@ -1,27 +1,8 @@
 import { reactive, ref } from 'vue';
+import { useLocalStorageRef } from './localstorage.js';
 
 const STORAGE_KEY = 'skelp.chat.sessions.v1';
 const EMPTY_STATE = { sessions: [], activeSessionId: '' };
-
-function localStorageRef(key, fallback) {
-  return {
-    read() {
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : fallback;
-      } catch {
-        return fallback;
-      }
-    },
-    write(value) {
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch (error) {
-        console.warn('Unable to save local chat sessions:', error);
-      }
-    }
-  };
-}
 
 function makeSession() {
   const now = Date.now();
@@ -39,13 +20,17 @@ function titleFromMessage(content) {
   return title.length > 38 ? `${title.slice(0, 35)}...` : title;
 }
 
+function cloneMessages(sessionMessages) {
+  return JSON.parse(JSON.stringify(sessionMessages));
+}
+
 export function useSessions({ messages, streaming, activeRequest, inputRef, nextTick, scrollToBottom }) {
   const sessions = reactive([]);
   const activeSessionId = ref('');
-  const storage = localStorageRef(STORAGE_KEY, EMPTY_STATE);
+  const storage = useLocalStorageRef(STORAGE_KEY, EMPTY_STATE);
 
   function persistSessions() {
-    storage.write({
+    storage.value = {
       activeSessionId: activeSessionId.value,
       sessions: sessions.map(({ id, title, messages: sessionMessages, createdAt, updatedAt }) => ({
         id,
@@ -54,7 +39,7 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
         createdAt,
         updatedAt
       }))
-    });
+    };
   }
 
   function persistActiveSession() {
@@ -89,7 +74,7 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
   }
 
   function restoreSessions() {
-    const stored = storage.read();
+    const stored = storage.value;
     const savedSessions = Array.isArray(stored.sessions) ? stored.sessions : [];
 
     savedSessions.forEach((session) => {
@@ -155,6 +140,41 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     persistSessions();
   }
 
+  function renameSession(sessionId, title) {
+    const session = sessions.find((item) => item.id === sessionId);
+    const nextTitle = title.replace(/\s+/g, ' ').trim();
+    if (!session || !nextTitle) return false;
+
+    session.title = nextTitle;
+    session.updatedAt = Date.now();
+    persistSessions();
+    return true;
+  }
+
+  function forkSession(sessionId, throughIndex) {
+    if (sessionId === activeSessionId.value) persistActiveSession();
+    const source = sessions.find((item) => item.id === sessionId);
+    if (!source) return null;
+
+    const fork = makeSession();
+    fork.title = `${source.title} (fork)`;
+    const sourceMessages = Number.isInteger(throughIndex)
+      ? source.messages.slice(0, throughIndex + 1)
+      : source.messages;
+    fork.messages = cloneMessages(sourceMessages);
+    sessions.unshift(fork);
+    activeSessionId.value = fork.id;
+    messages.splice(0, messages.length, ...fork.messages);
+    persistSessions();
+    return fork;
+  }
+
+  function exportSession(sessionId) {
+    if (sessionId === activeSessionId.value) persistActiveSession();
+    const session = sessions.find((item) => item.id === sessionId);
+    return session ? JSON.stringify(session, null, 2) : '';
+  }
+
   function startNewSession() {
     activeRequest.value?.abort();
     activeRequest.value = null;
@@ -174,6 +194,9 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     restoreSessions,
     switchSession,
     deleteSession,
+    renameSession,
+    forkSession,
+    exportSession,
     startNewSession,
     formatSessionDate
   };

@@ -27,6 +27,9 @@ export const MessageList = {
       return this.preview ? this.messages.slice(-3) : this.messages;
     }
   },
+  data() {
+    return { editingIndex: -1, editContent: '' };
+  },
   directives: {
     mermaid: {
       mounted(element) {
@@ -37,7 +40,29 @@ export const MessageList = {
       }
     }
   },
-  methods: { truncate, renderMd, partKey },
+  methods: {
+    truncate,
+    renderMd,
+    partKey,
+    copyMessage(message) {
+      this.$emit('copy-message', message);
+    },
+    startEdit(message, index) {
+      this.editingIndex = index;
+      this.editContent = message.content || '';
+      this.$nextTick(() => this.$refs.messageEditor?.[0]?.focus());
+    },
+    cancelEdit() {
+      this.editingIndex = -1;
+      this.editContent = '';
+    },
+    saveEdit(index, submit = false) {
+      const content = this.editContent.trim();
+      if (!content) return;
+      this.$emit('edit-message', { index, content, submit });
+      this.cancelEdit();
+    }
+  },
   template: `
     <div class="message-list" :class="{ 'message-preview': preview }">
       <div v-for="(msg, i) in displayMessages" :key="i" class="message" :class="msg.role">
@@ -90,7 +115,15 @@ export const MessageList = {
             </div>
           </template>
           <div v-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length) || (msg.microApps && msg.microApps.length) || msg.error || (!preview && streaming && i === displayMessages.length - 1 && !msg.content)" class="message-content">
-            <div v-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length)" v-mermaid v-html="renderMd(msg.content)"></div>
+            <template v-if="!preview && editingIndex === i">
+              <textarea ref="messageEditor" v-model="editContent" class="message-edit-input" rows="4" @keydown.esc="cancelEdit" @keydown.meta.enter="saveEdit(i)" @keydown.ctrl.enter="saveEdit(i)"></textarea>
+              <div class="message-edit-actions">
+                <button type="button" @click="cancelEdit">Cancel</button>
+                <button type="button" @click="saveEdit(i)">Save</button>
+                <button type="button" @click="saveEdit(i, true)">Save &amp; submit</button>
+              </div>
+            </template>
+            <div v-else-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length)" v-mermaid v-html="renderMd(msg.content)"></div>
             <div v-if="!preview && msg.microApps && msg.microApps.length" class="micro-app-list">
               <section v-for="app in msg.microApps" :key="app.id" class="micro-app">
                 <div class="micro-app-header">
@@ -119,9 +152,14 @@ export const MessageList = {
               <span></span><span></span><span></span>
             </div>
           </div>
+          <div v-if="!preview && editingIndex !== i" class="message-actions">
+            <button type="button" class="message-action" @click="copyMessage(msg)" title="Copy message" aria-label="Copy message">Copy</button>
+            <button v-if="!streaming" type="button" class="message-action" @click="$emit('fork-message', i)" title="Fork chat here" aria-label="Fork chat here">Fork here</button>
+            <button v-if="msg.role === 'user' && !streaming" type="button" class="message-action" @click="startEdit(msg, i)" title="Edit message" aria-label="Edit message">Edit</button>
+          </div>
         </div>
       </div>
     </div>
   `,
-  emits: ['micro-app-load']
+  emits: ['micro-app-load', 'copy-message', 'edit-message', 'fork-message']
 };

@@ -2,6 +2,7 @@ import { createApp, ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { useChat } from './compositions/chat.js';
 import { useSessions } from './compositions/sessions.js';
 import { useMicroApps } from './compositions/micro-apps.js';
+import { useLocalStorageRef } from './compositions/localstorage.js';
 import { MessageList } from './components/messages.js';
 import { PromptArea } from './components/prompt-area.js';
 import { SettingsPanel, applyCustomCss, loadCustomCss, saveCustomCss } from './components/settings.js';
@@ -20,6 +21,7 @@ createApp({
       <div class="header-center" style="flex: 1; text-align: center;"></div>
       <div class="header-right">
         <span v-if="false" class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
+        <button v-if="view === 'chat' && messages.length" class="btn-icon" @click="copyChat(activeSessionId)" :title="copyFeedbackId === activeSessionId ? copyFeedback : 'Copy chat as JSON'" :aria-label="copyFeedbackId === activeSessionId ? copyFeedback : 'Copy chat as JSON'">{{ copyFeedbackId === activeSessionId ? (copyFeedback === 'Copied' ? '\u2713' : '!') : '{ }' }}</button>
         <button class="btn-icon" @click="showFiles = true" title="Files" aria-label="Open files">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"></path></svg>
         </button>
@@ -42,7 +44,17 @@ createApp({
           @touchmove="onTabTouchEnd"
           :title="session.title"
         >
-          <span class="session-tab-title">{{ session.title }}</span>
+          <input
+            v-if="editingSessionId === session.id"
+            ref="sessionTitleInput"
+            class="session-title-input"
+            v-model="editingSessionTitle"
+            @click.stop
+            @keydown.enter.prevent="saveSessionTitle(session.id)"
+            @keydown.esc.prevent="cancelSessionTitleEdit"
+            @blur="saveSessionTitle(session.id)"
+          >
+          <span v-else class="session-tab-title" @dblclick.stop="startSessionTitleEdit(session)">{{ session.title }}</span>
           <time>{{ formatSessionDate(session.updatedAt) }}</time>
           <span
             class="tab-delete"
@@ -72,13 +84,28 @@ createApp({
           @touchmove="onTabTouchEnd"
         >
           <div class="session-card-header">
-            <span class="session-card-title">{{ session.title }}</span>
-            <span
+            <input
+              v-if="editingSessionId === session.id"
+              ref="sessionTitleInput"
+              class="session-title-input"
+              v-model="editingSessionTitle"
+              @click.stop
+              @keydown.enter.prevent="saveSessionTitle(session.id)"
+              @keydown.esc.prevent="cancelSessionTitleEdit"
+              @blur="saveSessionTitle(session.id)"
+            >
+            <span v-else class="session-card-title" @dblclick.stop="startSessionTitleEdit(session)">{{ session.title }}</span>
+            <div class="session-card-actions">
+              <button class="session-card-action" @click.stop="startSessionTitleEdit(session)" title="Edit chat label" aria-label="Edit chat label">Edit</button>
+              <button class="session-card-action" @click.stop="forkChat(session.id)" title="Fork chat" aria-label="Fork chat">Fork</button>
+              <button class="session-card-action" @click.stop="copyChat(session.id)" :title="copyFeedbackId === session.id ? copyFeedback : 'Copy chat as JSON'" :aria-label="copyFeedbackId === session.id ? copyFeedback : 'Copy chat as JSON'">{{ copyFeedbackId === session.id ? copyFeedback : 'JSON' }}</button>
+              <button
               class="card-delete"
               :class="{ confirm: confirmDeleteId === session.id }"
               @click.stop="requestDeleteSession(session.id)"
               :title="confirmDeleteId === session.id ? 'Click again to delete' : 'Delete chat'"
-            >{{ confirmDeleteId === session.id ? '\u2713' : '\u00d7' }}</span>
+              >{{ confirmDeleteId === session.id ? '\u2713' : '\u00d7' }}</button>
+            </div>
           </div>
           <div class="session-card-preview">
             <message-list :messages="session.messages" preview />
@@ -95,7 +122,7 @@ createApp({
           <h2>Skelp</h2>
           <p>A minimal shell powered by local AI. Type a message to get started.</p>
         </div>
-        <message-list :messages="messages" :streaming="streaming" @micro-app-load="postMicroAppTheme" />
+        <message-list :messages="messages" :streaming="streaming" @micro-app-load="postMicroAppTheme" @copy-message="copyMessage" @edit-message="editMessage" @fork-message="forkChatAt" />
       </div>
       <button v-if="!autoScroll && messages.length" class="scroll-jump-btn" @click="jumpToBottom">&#8595; New messages</button>
     </div>
@@ -152,7 +179,13 @@ createApp({
     const autoScroll = ref(true);
     const longPressId = ref('');
     const confirmDeleteId = ref('');
-    const closedTabIds = reactive(new Set());
+    const editingSessionId = ref('');
+    const editingSessionTitle = ref('');
+    const copyFeedbackId = ref('');
+    const copyFeedback = ref('');
+    const openTabsStorageKey = 'skelp.chat.open-tabs.v1';
+    const hasSavedOpenTabs = localStorage.getItem(openTabsStorageKey) !== null;
+    const openTabIds = useLocalStorageRef(openTabsStorageKey, []);
     let longPressTimer = null;
     let confirmDeleteTimer = null;
     let touchStartX = 0;
@@ -165,6 +198,9 @@ createApp({
       restoreSessions,
       switchSession,
       deleteSession,
+      renameSession,
+      forkSession,
+      exportSession,
       startNewSession,
       formatSessionDate
     } = useSessions({ messages, streaming, activeRequest, inputRef, nextTick, scrollToBottom });
@@ -183,7 +219,15 @@ createApp({
       return map[connectionStatus.value] || connectionStatus.value;
     });
 
-    const openSessions = computed(() => sessions.filter((session) => !closedTabIds.has(session.id)));
+    const openSessions = computed(() => sessions.filter((session) => openTabIds.value.includes(session.id)));
+
+    function openTab(id) {
+      if (!openTabIds.value.includes(id)) openTabIds.value.push(id);
+    }
+
+    function closeTab(id) {
+      openTabIds.value = openTabIds.value.filter((sessionId) => sessionId !== id);
+    }
 
     function scrollToBottom(force = false) {
       nextTick(() => {
@@ -253,7 +297,7 @@ createApp({
     }
 
     function closeSessionTab(id) {
-      closedTabIds.add(id);
+      closeTab(id);
       if (activeSessionId.value === id) view.value = 'overview';
     }
 
@@ -263,8 +307,98 @@ createApp({
     }
 
     function openSession(id) {
-      closedTabIds.delete(id);
+      openTab(id);
       showSession(id);
+    }
+
+    function startSessionTitleEdit(session) {
+      editingSessionId.value = session.id;
+      editingSessionTitle.value = session.title;
+      nextTick(() => {
+        const titleInput = document.querySelector('.session-title-input');
+        if (titleInput instanceof HTMLInputElement) titleInput.focus();
+      });
+    }
+
+    function cancelSessionTitleEdit() {
+      editingSessionId.value = '';
+      editingSessionTitle.value = '';
+    }
+
+    function saveSessionTitle(id) {
+      if (editingSessionId.value !== id) return;
+      renameSession(id, editingSessionTitle.value);
+      cancelSessionTitleEdit();
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      if (!copied) throw new Error('Clipboard access was denied');
+    }
+
+    function copyMessage(message) {
+      copyText(message.content || '').catch(console.error);
+    }
+
+    async function copyChat(id) {
+      const json = exportSession(id);
+      if (!json) return;
+      copyFeedbackId.value = id;
+      try {
+        await copyText(json);
+        copyFeedback.value = 'Copied';
+      } catch (error) {
+        copyFeedback.value = 'Copy failed';
+        console.error(error);
+      }
+      setTimeout(() => {
+        if (copyFeedbackId.value !== id) return;
+        copyFeedbackId.value = '';
+        copyFeedback.value = '';
+      }, 1800);
+    }
+
+    function forkChat(id) {
+      const fork = forkSession(id);
+      if (!fork) return;
+      openTab(fork.id);
+      view.value = 'chat';
+      nextTick(() => scrollToBottom(true));
+    }
+
+    function forkChatAt(index) {
+      const fork = forkSession(activeSessionId.value, index);
+      if (!fork) return;
+      openTab(fork.id);
+      view.value = 'chat';
+      nextTick(() => scrollToBottom(true));
+    }
+
+    function editMessage({ index, content, submit }) {
+      const message = messages[index];
+      if (!message || message.role !== 'user') return;
+      message.content = content;
+      messages.splice(index + 1);
+      persistActiveSession();
+      if (submit) sendFromEditedMessage();
+    }
+
+    async function sendFromEditedMessage() {
+      const editedMessage = messages.pop();
+      if (!editedMessage) return;
+      persistActiveSession();
+      await send(editedMessage.content);
     }
 
     async function loadConfig() {
@@ -327,7 +461,7 @@ createApp({
 
     function clearChat() {
       startNewSession();
-      closedTabIds.delete(activeSessionId.value);
+      openTab(activeSessionId.value);
       view.value = 'chat';
     }
 
@@ -355,6 +489,8 @@ createApp({
       customCss.value = savedCustomCss.value;
       applyCustomCss(savedCustomCss.value);
       restoreSessions();
+      if (!hasSavedOpenTabs) openTabIds.value = sessions.map((session) => session.id);
+      openTab(activeSessionId.value);
       await loadConfig();
       await loadModels();
       inputRef.value?.focus();
@@ -381,6 +517,10 @@ createApp({
       autoScroll,
       longPressId,
       confirmDeleteId,
+      editingSessionId,
+      editingSessionTitle,
+      copyFeedbackId,
+      copyFeedback,
       send,
       clearChat,
       openSettings,
@@ -399,6 +539,14 @@ createApp({
       closeSessionTab,
       showSession,
       openSession,
+      startSessionTitleEdit,
+      cancelSessionTitleEdit,
+      saveSessionTitle,
+      forkChat,
+      forkChatAt,
+      copyChat,
+      copyMessage,
+      editMessage,
       postMicroAppTheme
     };
   }

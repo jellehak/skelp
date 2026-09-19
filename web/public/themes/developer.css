@@ -804,6 +804,19 @@ body { background-image: linear-gradient(rgba(38, 48, 47, .16) 1px, transparent 
 .message-content a { color: var(--accent); }
 .tool-events { margin: 0 0 8px 0; padding: 7px 9px; border-left: 1px solid #4d3a2a; background: rgba(37, 27, 20, .28); }
 .message-parts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.message { position: relative; }
+.message-actions { display: flex; justify-content: flex-end; gap: 4px; min-height: 26px; margin-top: 4px; opacity: 0; transition: opacity .15s ease; }
+.message:hover .message-actions, .message-actions:focus-within { opacity: 1; }
+.message-action, .message-edit-actions button { padding: 4px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-muted); font: 10px var(--mono); cursor: pointer; }
+.message-action:hover, .message-action:focus-visible, .message-edit-actions button:hover { border-color: var(--accent-dim); color: var(--text); outline: none; }
+.message-edit-input { width: 100%; min-height: 90px; resize: vertical; padding: 9px 11px; border: 1px solid var(--accent-dim); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: 14px/1.5 var(--mono); outline: none; }
+.message-edit-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 6px; }
+.session-title-input { min-width: 80px; max-width: 170px; padding: 3px 5px; border: 1px solid var(--accent-dim); border-radius: 4px; background: var(--bg); color: var(--text); font: 11px var(--mono); outline: none; }
+.session-card-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.session-card-action { padding: 2px 4px; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); font: 9px var(--mono); cursor: pointer; opacity: 0; }
+.session-card:hover .session-card-action, .session-card-action:focus-visible { opacity: 1; }
+.session-card-action:hover, .session-card-action:focus-visible { background: var(--surface-hover); color: var(--accent); outline: none; }
+@media (max-width: 640px) { .message-actions { opacity: 1; } }
 .message-parts .trace-part { margin: 0; }
 .message-parts + .message-content { padding-top: 0; }
 .tool-call, .tool-result { margin: 4px 0; padding: 6px 9px; border-radius: 4px; font: 11px/1.5 var(--mono); }
