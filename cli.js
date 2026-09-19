@@ -17,7 +17,6 @@ async function main() {
     server: { type: 'string', alias: 's' },
     model: { type: 'string', alias: 'm' },
     host: { type: 'string' },
-    help: { type: 'boolean', alias: 'h' },
     yes: { type: 'boolean', alias: 'y' },
     cli: { type: 'boolean' }
   };
@@ -39,14 +38,9 @@ async function main() {
     });
   } catch (err) {
     console.error(`\x1b[31mError parsing arguments: ${err.message}\x1b[0m`);
-    printHelp();
     process.exit(1);
   }
 
-  if (args.help) {
-    printHelp();
-    process.exit(0);
-  }
 
   const tuiRequested = positionalArgs[0]?.toLowerCase() === 'tui';
   if (tuiRequested) {
@@ -147,39 +141,6 @@ function promptForServer() {
       resolve({ url, model });
     });
   });
-}
-
-function printHelp() {
-  console.log(`
-\x1b[1mSkelp\x1b[0m — A minimal shell powered by local running assistant.
-
-\x1b[1mUsage:\x1b[0m
-  skelp                       Start the line-based CLI shell.
-  skelp tui                   Start the interactive TUI shell.
-  skelp [task/command]        Run a one-off natural-language prompt or action direct.
-  skelp --cli [task/command]  Alias for the line-based CLI shell.
-  skelp web [port] [directory] Start the web interface (default port: 3000, CWD: ~/.skelp).
-  skelp config <get|set|list> Manage configuration settings.
-
-\x1b[1mConfig Commands:\x1b[0m
-  skelp config list           Show all current configurations.
-  skelp config get <key>      Get value for a configuration key.
-  skelp config set <key> <val> Set a configuration key (e.g. server, primaryModel, tone, userSystem, autoApprove). Use server="auto" to re-trigger provider detection.
-
-\x1b[1mOptions:\x1b[0m
-  -s, --server <url>          Override OpenAI-compatible server URL (default: auto-detect). Use "auto" to re-trigger detection.
-  -m, --model <name>          Override primary model name (default: local-ai-model).
-      --host <address>        Bind the web interface to an address (default: 0.0.0.0).
-  -y, --yes                   Automatically approve all workspace/shell commands without prompting.
-  -h, --help                  Show help.
-
-\x1b[1mInteractive Built-in Commands:\x1b[0m
-  change server to <url>      Sets the active server connection and saves it.
-  change model to <name>      Sets the target model name and saves it.
-  change tone to <tone>       Sets conversational personality.
-  which models are available? Queries current server for available models.
-  exit, quit                  Exit interactive shell.
-`);
 }
 
 main();
