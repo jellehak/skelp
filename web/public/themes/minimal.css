@@ -7,6 +7,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .header-left img{width:28px;height:28px}
 .header-left h1{font-size:16px;font-weight:600;letter-spacing:-.02em}
 .header-logo{width:28px;height:28px;flex:0 0 28px}
+.header-center{display:flex;justify-content:center;min-width:0;flex:1}
+.cwd-breadcrumb{display:flex;align-items:center;justify-content:center;min-width:0;max-width:100%;overflow:hidden;color:var(--text-muted);font:11px var(--mono);white-space:nowrap}
+.cwd-segment{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cwd-ancestor{flex:0 1 auto}
+.cwd-separator{flex:0 0 auto;margin:0 5px;opacity:.45}
+.cwd-current{flex:0 1 auto;border:0;background:transparent;color:var(--text);font:inherit;cursor:pointer}
+.cwd-current:hover{color:var(--accent)}
+.cwd-current:focus-visible{border-radius:3px;outline:2px solid var(--accent);outline-offset:3px}
 .header-right{display:flex;align-items:center;gap:8px}
 .header-status{font-size:12px;color:var(--text-muted);padding:4px 10px;border-radius:20px;background:var(--bg)}
 .header-status.connected{color:#4ade80}
@@ -142,6 +150,10 @@ to{opacity:1;transform:translateY(0)}
 .session-tab.active time{color:var(--accent-dim)}
 @media (max-width: 640px){.header{padding:7px 13px;gap:8px}
 .header-logo{width:26px;height:26px;flex-basis:26px}
+.header-left h1{display:none}
+.cwd-breadcrumb .cwd-ancestor:not(:first-child){display:none}
+.cwd-breadcrumb .cwd-separator:not(:last-of-type){display:none}
+.cwd-current{max-width:120px}
 .rail-actions{gap:4px}
 .rail-action{min-width:34px;width:34px;padding:0;justify-content:center;gap:0}
 .rail-action span:last-child{display:none}
