@@ -85,11 +85,11 @@ body {
 	{
 		name: 'Cyberpunk',
 		prepend: true,
-		css: `@import url('/components/settings/themes/cyberpunk.css');`
+		css: `@import url('/themes/mods/cyberpunk.css');`
 	},
 	{
 		name: 'Minimalistic',
 		prepend: true,
-		css: `@import url('/components/settings/themes/minimalistic.css');`
+		css: `@import url('/themes/mods/minimalistic.css');`
 	}
 ];

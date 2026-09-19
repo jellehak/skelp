@@ -45,6 +45,11 @@ body {
   background: var(--bg-secondary);
 }
 
+.session-rail {
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .header-left::after,
 .message-avatar {
   display: none;

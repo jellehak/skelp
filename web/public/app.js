@@ -17,6 +17,7 @@ createApp({
         <img src="/logo.svg" alt="Skelp">
         <h1>Skelp</h1>
       </div>
+      <div class="header-center" style="flex: 1; text-align: center;"></div>
       <div class="header-right">
         <span v-if="false" class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
         <button class="btn-icon" @click="showFiles = true" title="Files" aria-label="Open files">
