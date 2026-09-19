@@ -1,6 +1,4 @@
-import { marked } from 'marked';
-
-marked.setOptions({ breaks: true, gfm: true });
+import { renderMarkdown, renderMermaid } from '../lib/markdown-renderer.js';
 
 const BOT_NAME = 'Skelp';
 
@@ -10,12 +8,7 @@ function truncate(str, len) {
 }
 
 function renderMd(text) {
-  if (!text) return '';
-  try {
-    return marked.parse(text);
-  } catch {
-    return text;
-  }
+  return renderMarkdown(text);
 }
 
 function partKey(part, index) {
@@ -32,6 +25,16 @@ export const MessageList = {
   computed: {
     displayMessages() {
       return this.preview ? this.messages.slice(-3) : this.messages;
+    }
+  },
+  directives: {
+    mermaid: {
+      mounted(element) {
+        renderMermaid(element).catch(() => {});
+      },
+      updated(element) {
+        renderMermaid(element).catch(() => {});
+      }
     }
   },
   methods: { truncate, renderMd, partKey },
@@ -59,7 +62,7 @@ export const MessageList = {
                   </div>
                 </div>
                 <div v-else-if="part.type === 'text' && part.content" class="message-content trace-part">
-                  <div v-html="renderMd(part.content)"></div>
+                  <div v-mermaid v-html="renderMd(part.content)"></div>
                 </div>
               </template>
             </div>
@@ -87,7 +90,7 @@ export const MessageList = {
             </div>
           </template>
           <div v-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length) || (msg.microApps && msg.microApps.length) || msg.error || (!preview && streaming && i === displayMessages.length - 1 && !msg.content)" class="message-content">
-            <div v-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length)" v-html="renderMd(msg.content)"></div>
+            <div v-if="msg.role !== 'assistant' || preview || !(msg.parts && msg.parts.length)" v-mermaid v-html="renderMd(msg.content)"></div>
             <div v-if="!preview && msg.microApps && msg.microApps.length" class="micro-app-list">
               <section v-for="app in msg.microApps" :key="app.id" class="micro-app">
                 <div class="micro-app-header">

@@ -36,7 +36,7 @@ createApp({
           :key="session.id"
           class="session-tab"
           :class="{ active: session.id === activeSessionId && view === 'chat', 'show-delete': longPressId === session.id }"
-          @click="switchSession(session.id)"
+          @click="showSession(session.id)"
           @touchstart.passive="onTabTouchStart(session.id)"
           @touchend="onTabTouchEnd"
           @touchmove="onTabTouchEnd"
@@ -257,10 +257,14 @@ createApp({
       if (activeSessionId.value === id) view.value = 'overview';
     }
 
-    function openSession(id) {
-      closedTabIds.delete(id);
+    function showSession(id) {
       switchSession(id);
       view.value = 'chat';
+    }
+
+    function openSession(id) {
+      closedTabIds.delete(id);
+      showSession(id);
     }
 
     async function loadConfig() {
@@ -393,6 +397,7 @@ createApp({
       onTabTouchEnd,
       requestDeleteSession,
       closeSessionTab,
+      showSession,
       openSession,
       postMicroAppTheme
     };
