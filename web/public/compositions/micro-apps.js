@@ -27,7 +27,7 @@ function readTheme() {
   return Object.fromEntries(THEME_VARIABLES.map((name) => [name, styles.getPropertyValue(name).trim()]));
 }
 
-export function useMicroApps({ messages, send, scrollToBottom }) {
+export function useMicroApps({ messages, send, scrollToBottom, onRootChange }) {
   function registerApps(message) {
     if (!message || message.role !== 'assistant') return false;
     const { apps, cleanedContent } = extractApps(message.content);
@@ -43,7 +43,7 @@ export function useMicroApps({ messages, send, scrollToBottom }) {
     iframe.contentWindow?.postMessage({
       source: 'skelp',
       type: 'theme',
-      payload: { cssVariables: readTheme() }
+      payload: { cssVariables: readTheme(), cwd: iframe.dataset.cwd || '.' }
     }, window.location.origin);
   }
 
@@ -59,6 +59,10 @@ export function useMicroApps({ messages, send, scrollToBottom }) {
 
     if (data.type === 'chat.send' && typeof data.payload?.text === 'string' && data.payload.text.trim()) {
       send(data.payload.text.trim());
+    }
+
+    if (data.type === 'root.change' && typeof data.payload?.path === 'string') {
+      onRootChange?.(data.payload.path, event.source);
     }
 
     if (data.type === 'app.resize' && Number.isFinite(data.payload?.height)) {

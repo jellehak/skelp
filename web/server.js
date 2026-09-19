@@ -1,5 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AIAgent } from '../skelp-agent.js';
@@ -102,9 +103,19 @@ function sendSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-function handleFiles(req, res, cwd) {
-  const requestedPath = new URL(req.url, 'http://localhost').searchParams.get('path') || '.';
-  const rootPath = path.resolve(cwd);
+function resolveRequestCwd(launchRoot, requestedCwd = '.') {
+  return resolveFocusedRoot(launchRoot, launchRoot, requestedCwd);
+}
+
+function handleFiles(req, res, launchRoot) {
+  const searchParams = new URL(req.url, 'http://localhost').searchParams;
+  const requestedPath = searchParams.get('path') || '.';
+  let rootPath;
+  try {
+    rootPath = resolveRequestCwd(launchRoot, searchParams.get('cwd') || '.');
+  } catch (err) {
+    return json(res, err.code === 'ENOENT' ? 404 : 400, { error: err.message });
+  }
   const targetPath = path.resolve(rootPath, requestedPath);
   if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
     return json(res, 403, { error: 'Path is outside the working directory' });
@@ -133,7 +144,7 @@ function handleFiles(req, res, cwd) {
   }
 }
 
-async function handleChat(req, res, cwd) {
+async function handleChat(req, res, launchRoot) {
   let body;
   try {
     body = await parseBody(req);
@@ -141,9 +152,16 @@ async function handleChat(req, res, cwd) {
     return json(res, 400, { error: 'Invalid JSON body' });
   }
 
-  const { messages } = body;
+  const { messages, cwd: requestedCwd = '.' } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return json(res, 400, { error: 'messages array required' });
+  }
+
+  let cwd;
+  try {
+    cwd = resolveRequestCwd(launchRoot, requestedCwd);
+  } catch (err) {
+    return json(res, err.code === 'ENOENT' ? 404 : 400, { error: err.message });
   }
 
   let config = loadConfig();
@@ -227,6 +245,30 @@ function handleConfigGet(req, res) {
   json(res, 200, loadConfig());
 }
 
+export function formatRootPath(cwd, home = os.homedir()) {
+  const rootPath = path.resolve(cwd);
+  const homePath = path.resolve(home);
+  if (rootPath === homePath) return '~';
+  if (rootPath.startsWith(`${homePath}${path.sep}`)) {
+    return `~${path.sep}${path.relative(homePath, rootPath)}`;
+  }
+  return rootPath;
+}
+
+function handleRuntime(req, res, launchRoot) {
+  json(res, 200, { root: formatRootPath(launchRoot) });
+}
+
+export function resolveFocusedRoot(launchRoot, currentRoot, requestedPath) {
+  const boundary = path.resolve(launchRoot);
+  const target = path.resolve(currentRoot, requestedPath || '.');
+  if (target !== boundary && !target.startsWith(`${boundary}${path.sep}`)) {
+    throw new Error('Path is outside the launch working directory');
+  }
+  if (!fs.statSync(target).isDirectory()) throw new Error('Working directory must be a folder');
+  return target;
+}
+
 async function handleConfigPost(req, res) {
   try {
     const body = await parseBody(req);
@@ -237,7 +279,7 @@ async function handleConfigPost(req, res) {
   }
 }
 
-async function handleRequest(req, res, cwd) {
+async function handleRequest(req, res, launchRoot) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -248,19 +290,20 @@ async function handleRequest(req, res, cwd) {
   }
 
   const url = req.url.split('?')[0];
-
-  if (url === '/api/chat' && req.method === 'POST') return handleChat(req, res, cwd);
+  if (url === '/api/chat' && req.method === 'POST') return handleChat(req, res, launchRoot);
   if (url === '/api/models' && req.method === 'GET') return handleModels(req, res);
   if (url === '/api/config' && req.method === 'GET') return handleConfigGet(req, res);
   if (url === '/api/config' && req.method === 'POST') return handleConfigPost(req, res);
-  if (url === '/api/files' && req.method === 'GET') return handleFiles(req, res, cwd);
-  if (url.startsWith('/apps/') && req.method === 'GET') return serveApps(req, res, cwd);
+  if (url === '/api/runtime' && req.method === 'GET') return handleRuntime(req, res, launchRoot);
+  if (url === '/api/files' && req.method === 'GET') return handleFiles(req, res, launchRoot);
+  if (url.startsWith('/apps/') && req.method === 'GET') return serveApps(req, res, launchRoot);
 
   serveStatic(req, res);
 }
 
 export function start(port = 3000, cwd = process.cwd(), host = 'localhost') {
-  const server = http.createServer((req, res) => handleRequest(req, res, cwd));
+  const launchRoot = path.resolve(cwd);
+  const server = http.createServer((req, res) => handleRequest(req, res, launchRoot));
   server.listen(port, host, () => {
     console.log(`\x1b[1mSkelp\x1b[0m web interface running at \x1b[36mhttp://${host}:${port}\x1b[0m`);
     console.log(`\x1b[2mPress Ctrl+C to stop.\x1b[0m`);

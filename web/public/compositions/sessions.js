@@ -28,6 +28,7 @@ function makeSession() {
   return {
     id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
     title: 'New session',
+    cwd: '.',
     messages: [],
     createdAt: now,
     updatedAt: now
@@ -47,9 +48,10 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
   function persistSessions() {
     storage.write({
       activeSessionId: activeSessionId.value,
-      sessions: sessions.map(({ id, title, messages: sessionMessages, createdAt, updatedAt }) => ({
+      sessions: sessions.map(({ id, title, cwd, messages: sessionMessages, createdAt, updatedAt }) => ({
         id,
         title,
+        cwd,
         messages: sessionMessages,
         createdAt,
         updatedAt
@@ -97,6 +99,7 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
       sessions.push({
         id: session.id,
         title: session.title || 'New session',
+        cwd: session.cwd || '.',
         messages: session.messages,
         createdAt: session.createdAt || Date.now(),
         updatedAt: session.updatedAt || Date.now()
@@ -167,6 +170,18 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  function getActiveCwd() {
+    return sessions.find((session) => session.id === activeSessionId.value)?.cwd || '.';
+  }
+
+  function setActiveCwd(cwd) {
+    const session = sessions.find((item) => item.id === activeSessionId.value);
+    if (!session) return;
+    session.cwd = cwd || '.';
+    session.updatedAt = Date.now();
+    persistSessions();
+  }
+
   return {
     sessions,
     activeSessionId,
@@ -175,6 +190,8 @@ export function useSessions({ messages, streaming, activeRequest, inputRef, next
     switchSession,
     deleteSession,
     startNewSession,
+    getActiveCwd,
+    setActiveCwd,
     formatSessionDate
   };
 }

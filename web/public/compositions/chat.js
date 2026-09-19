@@ -49,6 +49,7 @@ export function useChat({
   persistActiveSession,
   scrollToBottom,
   registerApps,
+  getCwd,
   nextTick,
   fetchImpl = fetch
 }) {
@@ -150,7 +151,7 @@ export function useChat({
       const response = await fetchImpl('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }),
+        body: JSON.stringify({ messages: payload, cwd: getCwd() }),
         signal: requestController.signal
       });
 

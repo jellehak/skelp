@@ -34,6 +34,7 @@
     const backButton = document.getElementById('back');
     const focusButton = document.getElementById('focus');
     let currentPath = '.';
+    let cwd = '.';
 
     function formatSize(size) {
       if (size < 1024) return `${size} B`;
@@ -75,7 +76,8 @@
     async function load(nextPath) {
       content.innerHTML = '<div class="empty">Loading...</div>';
       try {
-        const response = await fetch(`/api/files?path=${encodeURIComponent(nextPath)}`);
+        const query = new URLSearchParams({ path: nextPath, cwd });
+        const response = await fetch(`/api/files?${query}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Unable to read directory');
         currentPath = data.path;
@@ -99,9 +101,15 @@
       const data = event.data;
       if (data?.source !== 'skelp') return;
       if (data.type === 'theme') {
+        cwd = data.payload.cwd || '.';
         for (const [name, value] of Object.entries(data.payload.cssVariables)) document.documentElement.style.setProperty(name, value);
       }
-      if (data.type === 'root.changed') load('.');
+      if (data.type === 'root.changed') {
+        cwd = data.payload.cwd || '.';
+        focusButton.disabled = false;
+        focusButton.textContent = 'Focus here';
+        load('.');
+      }
       if (data.type === 'root.error') {
         focusButton.disabled = false;
         focusButton.textContent = 'Focus here';

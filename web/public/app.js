@@ -17,7 +17,15 @@ createApp({
         <img src="/logo.svg" alt="Skelp">
         <h1>Skelp</h1>
       </div>
-      <div class="header-center" style="flex: 1; text-align: center;"></div>
+      <div class="header-center">
+        <nav v-if="rootSegments.length" class="cwd-breadcrumb" :title="rootPath" aria-label="Root working directory">
+          <template v-for="(segment, index) in rootSegments" :key="index">
+            <span v-if="index" class="cwd-separator" aria-hidden="true">/</span>
+            <span v-if="index < rootSegments.length - 1" class="cwd-segment cwd-ancestor">{{ segment }}</span>
+            <button v-else class="cwd-segment cwd-current" type="button" @click="showFiles = true" aria-label="Open root working directory in Files">{{ segment }}</button>
+          </template>
+        </nav>
+      </div>
       <div class="header-right">
         <span v-if="false" class="header-status" :class="connectionStatus">{{ statusLabel }}</span>
         <button class="btn-icon" @click="showFiles = true" title="Files" aria-label="Open files">
@@ -128,6 +136,7 @@ createApp({
           src="/built-in/files/index.html"
           title="Files"
           data-micro-app="files"
+          :data-cwd="activeCwd"
           @load="postMicroAppTheme"
         ></iframe>
       </section>
@@ -152,6 +161,7 @@ createApp({
     const autoScroll = ref(true);
     const longPressId = ref('');
     const confirmDeleteId = ref('');
+    const rootPath = ref('');
     const closedTabIds = reactive(new Set());
     let longPressTimer = null;
     let confirmDeleteTimer = null;
@@ -166,6 +176,8 @@ createApp({
       switchSession,
       deleteSession,
       startNewSession,
+      getActiveCwd,
+      setActiveCwd,
       formatSessionDate
     } = useSessions({ messages, streaming, activeRequest, inputRef, nextTick, scrollToBottom });
 
@@ -184,6 +196,9 @@ createApp({
     });
 
     const openSessions = computed(() => sessions.filter((session) => !closedTabIds.has(session.id)));
+    const activeCwd = computed(() => getActiveCwd());
+    const displayCwd = computed(() => activeCwd.value === '.' ? rootPath.value : `${rootPath.value}/${activeCwd.value}`);
+    const rootSegments = computed(() => displayCwd.value.split('/').filter(Boolean));
 
     function scrollToBottom(force = false) {
       nextTick(() => {
@@ -291,6 +306,23 @@ createApp({
       }
     }
 
+    async function loadRuntime() {
+      try {
+        const res = await fetch('/api/runtime');
+        if (!res.ok) return;
+        const data = await res.json();
+        rootPath.value = data.root || '';
+      } catch {
+        rootPath.value = '';
+      }
+    }
+
+    async function changeRoot(path, source) {
+      const cwd = activeCwd.value === '.' ? path : `${activeCwd.value}/${path}`;
+      setActiveCwd(cwd);
+      source?.postMessage({ source: 'skelp', type: 'root.changed', payload: { cwd } }, window.location.origin);
+    }
+
     async function saveSettings() {
       try {
         saveCustomCss(customCss.value);
@@ -335,7 +367,8 @@ createApp({
     const { postTheme: postMicroAppTheme, registerApps } = useMicroApps({
       messages,
       send: (text) => send(text),
-      scrollToBottom
+      scrollToBottom,
+      onRootChange: changeRoot
     });
     ({ send } = useChat({
       messages,
@@ -347,6 +380,7 @@ createApp({
       persistActiveSession,
       scrollToBottom,
       registerApps,
+      getCwd: getActiveCwd,
       nextTick
     }));
 
@@ -355,8 +389,7 @@ createApp({
       customCss.value = savedCustomCss.value;
       applyCustomCss(savedCustomCss.value);
       restoreSessions();
-      await loadConfig();
-      await loadModels();
+      await Promise.all([loadConfig(), loadModels(), loadRuntime()]);
       inputRef.value?.focus();
     });
 
@@ -381,6 +414,9 @@ createApp({
       autoScroll,
       longPressId,
       confirmDeleteId,
+      rootPath,
+      activeCwd,
+      rootSegments,
       send,
       clearChat,
       openSettings,
