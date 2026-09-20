@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 
 import readline from 'node:readline';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { parseArgs } from './lib/parseArgs.js';
 import { loadConfig, saveConfig } from './lib/config.js';
 import { detectProvider, fetchModels } from './lib/detect-provider.js';
@@ -13,10 +10,19 @@ import { executeCommand } from './lib/commands.js';
 import { createPlainCli, stripBlessedTags } from './lib/plain-cli.js';
 
 async function main() {
+  const argv = process.argv.slice(2);
+  const subCommand = argv.find((arg) => !arg.startsWith('-'))?.toLowerCase();
+
+  if (subCommand === 'web') {
+    const webIndex = argv.findIndex((arg) => arg.toLowerCase() === 'web');
+    const { run: runWebCli } = await import('./web/cli.js');
+    process.exitCode = runWebCli(argv.slice(webIndex + 1));
+    return;
+  }
+
   const definitions = {
     server: { type: 'string', alias: 's' },
     model: { type: 'string', alias: 'm' },
-    host: { type: 'string' },
     yes: { type: 'boolean', alias: 'y' },
     cli: { type: 'boolean' }
   };
@@ -26,7 +32,6 @@ async function main() {
 
   try {
     // Collect non-flag positionals directly to allow free text one-off commands
-    const argv = process.argv.slice(2);
     args = parseArgs(argv, definitions, {
       unknown: (arg) => {
         if (!arg.startsWith('-')) {
@@ -51,19 +56,6 @@ async function main() {
   const isCommand = positionalArgs.length > 0 && ['config', 'models', 'help', 'web'].includes(positionalArgs[0].toLowerCase());
   if (isCommand) {
     const subCmd = positionalArgs[0].toLowerCase();
-
-    if (subCmd === 'web') {
-      const webArgs = positionalArgs.slice(1);
-      const port = /^\d+$/.test(webArgs[0] || '') ? parseInt(webArgs.shift(), 10) : 3000;
-      const cwd = path.resolve(webArgs[0] || path.join(os.homedir(), '.skelp'));
-      if (webArgs[0] && (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory())) {
-        throw new Error(`Web working directory does not exist: ${cwd}`);
-      }
-      fs.mkdirSync(cwd, { recursive: true });
-      const { start } = await import('./web/server.js');
-      start(port, cwd, args.host);
-      return;
-    }
 
     const cmdStr = positionalArgs.join(' ');
     const handled = await executeCommand(cmdStr, {
